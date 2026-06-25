@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          pyinstaller
+          --onefile
+          --windowed
+          --name "WPS增强工具"
+          main.py
+
+      - name: Build with PyInstaller (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --name "WPS增强工具" \
+            main.py
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WPS增强工具-win64
+          path: dist/WPS增强工具.exe
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WPS增强工具-macOS
+          path: dist/WPS增强工具.app

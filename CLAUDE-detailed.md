@@ -11,8 +11,10 @@
 class ColumnMapping:
     source_name_col: str = "法定代表人"   # 源表姓名列名
     source_phone_col: str = "有效手机号"  # 源表手机号列名
-    target_name_col: str = "姓名"         # 目标表姓名列名
-    target_phone_col: str = "家庭手机"    # 目标表手机号列名
+    target_name_col: str = "姓"          # 目标表姓名列名
+    target_phone_col: str = "家庭手机"   # 目标表手机号列名
+    target_name_index: int = 0          # 姓名在 25 列模板中的索引
+    target_phone_index: int = 4         # 手机号在 25 列模板中的索引
 ```
 
 MVP 阶段四个字段均使用默认值，不允许通过 UI 修改。
