@@ -1,4 +1,4 @@
-name: Build
+name: Build and Release
 
 on:
   push:
@@ -43,16 +43,18 @@ jobs:
             --name "WPS增强工具" \
             main.py
 
-      - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: WPS增强工具-win64
-          path: dist/WPS增强工具.exe
-
-      - name: Upload artifact (macOS)
+      - name: Zip artifact (macOS)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        run: |
+          cd dist
+          zip -r "WPS增强工具-macOS.zip" "WPS增强工具.app"
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: WPS增强工具-macOS
-          path: dist/WPS增强工具.app
+          fail_on_unmatched_files: false
+          files: |
+            dist/WPS增强工具.exe
+            dist/WPS增强工具-macOS.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
