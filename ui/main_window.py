@@ -1,9 +1,9 @@
 import importlib
-from pathlib import Path
 from typing import List, Tuple, Type
 
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QLabel, QWidget
 
+from core.app_paths import get_features_dir
 from core.logger import get_logger
 
 
@@ -20,7 +20,7 @@ class MainWindow(QMainWindow):
 
     def _load_features(self) -> None:
         """扫描 features/ 目录，动态导入各功能子包。"""
-        features_dir = Path("features")
+        features_dir = get_features_dir()
         if not features_dir.is_dir():
             return
 

@@ -39,6 +39,8 @@ jobs:
           --onefile
           --windowed
           --name "WPS增强工具"
+          --add-data "features;features"
+          --collect-submodules features
           main.py
 
       - name: Build with PyInstaller (macOS)
@@ -48,6 +50,8 @@ jobs:
             --onefile \
             --windowed \
             --name "WPS增强工具" \
+            --add-data "features:features" \
+            --collect-submodules features \
             main.py
 
       - name: Zip artifact (macOS)

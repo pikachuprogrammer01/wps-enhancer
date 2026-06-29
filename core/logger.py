@@ -1,9 +1,9 @@
 import logging
 from logging.handlers import TimedRotatingFileHandler
-from pathlib import Path
 from datetime import datetime
 
-_LOG_DIR = Path("logs")
+from core.app_paths import get_logs_dir
+
 _FMT = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
 _DATE_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -16,8 +16,9 @@ def get_logger(module_name: str) -> logging.Logger:
 
     logger.setLevel(logging.DEBUG)
 
-    _LOG_DIR.mkdir(exist_ok=True)
-    log_file = _LOG_DIR / f"wps_enhancer_{datetime.now().strftime('%Y%m%d')}.log"
+    log_dir = get_logs_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"wps_enhancer_{datetime.now().strftime('%Y%m%d')}.log"
 
     file_handler = TimedRotatingFileHandler(
         filename=str(log_file),
