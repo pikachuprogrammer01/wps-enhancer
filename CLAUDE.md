@@ -21,6 +21,8 @@
 | `core/exceptions.py` | 全局统一异常定义，只定义不捕获 |
 | `core/logger.py` | 统一日志入口 + AOP 日志装饰器（`log_call`），所有模块通过此模块记录日志 |
 | `core/settings.py` | 全局设置（settings.json）唯一读写入口 |
+| `core/updater.py` | 自动更新：GitHub Releases 检查/版本比较/下载（纯 stdlib + certifi） |
+| `core/version.py` | 应用版本号（APP_VERSION，发布 tag v{版本} 触发自动发布） |
 | `core/template/` | 模板系统公共基础设施（模型/存储/匹配引擎/管理器） |
 | `core/file_io/base.py` | Reader/Writer 抽象接口，features/ 只能通过此层访问文件 |
 | `core/file_io/xlsx_handler.py` | xlsx 格式的 Reader/Writer 具体实现 |

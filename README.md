@@ -53,6 +53,18 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 
 > 打包模式：**onedir**（模块直接放在 `.app` 内，启动即用，约 0-1s；此前 onefile 每次启动解包到临时目录需 5-6s）。spec 中 `excludes` 排除了 `tkinter`/`lib2to3`/`pydoc_data`/`test`/`unittest` 等运行用不到的模块。
 
+### 发布新版本（自动更新）
+
+1. 更新 `core/version.py` 的 `APP_VERSION`（如 `1.1.0`）
+2. 打标签并推送（GitHub Actions 自动打包上传 Releases）：
+   ```bash
+   git tag v1.1.0 && git push origin v1.1.0
+   ```
+3. 发布物：`WPS增强工具.zip`（含 `.app`）
+4. 用户端：设置 → 更新 → 「检查更新」（或启动时自动检查，可在设置中关闭）→ 下载 zip → 按指引替换 .app
+
+> ⚠️ 当前 app 为 ad-hoc 签名，从 GitHub 下载的 .app 首次打开需右键 → 打开（或 `xattr -d com.apple.quarantine <路径>`）绕过 Gatekeeper。
+
 ### 验证打包产物
 
 1. 运行：`open "dist/WPS增强工具.app"`

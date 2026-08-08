@@ -127,6 +127,7 @@ class AppSettings:
     declaration_detect: bool = True   # 声明行检测（自动跳过首行声明）
     declaration_keywords: List[str] = [企查查,天眼查,...]  # 声明关键词（可编辑）
     log_debug: bool = False           # 详细日志开关（AOP）
+    auto_update_enabled: bool = True  # 启动时自动检查 GitHub Releases 更新
 ```
 
 ### CellStyle / MergeRange — `core/file_io/base.py`（不变）
