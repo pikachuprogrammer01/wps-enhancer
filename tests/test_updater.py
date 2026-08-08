@@ -41,8 +41,8 @@ class CheckReleaseTest(unittest.TestCase):
             "html_url": "https://github.com/x/wps-enhancer/releases/tag/v1.1.0",
             "published_at": "2026-08-09T00:00:00Z",
             "assets": [
-                {"name": "WPS增强工具.zip",
-                 "browser_download_url": "https://github.com/x/wps-enhancer/releases/download/v1.1.0/WPS增强工具.zip",
+                {"name": "WPS增强工具-macOS.zip",
+                 "browser_download_url": "https://github.com/x/wps-enhancer/releases/download/v1.1.0/WPS增强工具-macOS.zip",
                  "size": 12345},
                 {"name": "notes.md", "browser_download_url": "https://x/notes"},
             ],
@@ -54,16 +54,45 @@ class CheckReleaseTest(unittest.TestCase):
             urlopen.return_value.__enter__.return_value = resp
             info = check_latest_release()
         self.assertEqual(info.tag_name, "v1.1.0")
-        self.assertTrue(info.zip_url.endswith("WPS增强工具.zip"))
+        self.assertTrue(info.zip_url.endswith("WPS增强工具-macOS.zip"))
         self.assertEqual(info.zip_size, 12345)
 
-    def test_check_latest_release_http_error(self):
+    def test_check_latest_release_platform_asset(self):
+        """更新包按平台匹配资产（macos/windows）。"""
+        payload = {
+            "tag_name": "v1.1.0",
+            "html_url": "https://x",
+            "published_at": "2026-08-09T00:00:00Z",
+            "assets": [
+                {"name": "WPS增强工具-macOS.zip",
+                 "browser_download_url": "https://x/mac.zip", "size": 1},
+                {"name": "WPS增强工具-Windows.zip",
+                 "browser_download_url": "https://x/win.zip", "size": 2},
+            ],
+        }
         with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
             resp = mock.MagicMock()
-            resp.status = 404
+            resp.status = 200
+            resp.read.return_value = __import__("json").dumps(payload).encode()
             urlopen.return_value.__enter__.return_value = resp
-            with self.assertRaises(UpdaterError):
-                check_latest_release()
+            mac = check_latest_release(platform="macos")
+            win = check_latest_release(platform="windows")
+        self.assertTrue(mac.zip_url.endswith("mac.zip"))
+        self.assertTrue(win.zip_url.endswith("win.zip"))
+
+    def test_check_latest_release_http_error(self):
+        """404（暂无 Release）与 500 分别给出明确错误。"""
+        import urllib.error
+        for code, expect in ((404, "暂无已发布"), (500, "500")):
+            with mock.patch(
+                "core.updater.urllib.request.urlopen",
+                side_effect=urllib.error.HTTPError(
+                    "https://x", code, "err", None, None,
+                ),
+            ):
+                with self.assertRaises(UpdaterError) as ctx:
+                    check_latest_release()
+                self.assertIn(expect, str(ctx.exception))
 
     def test_check_latest_release_network_error(self):
         import urllib.error
@@ -99,6 +128,36 @@ class DownloadTest(unittest.TestCase):
         ):
             with self.assertRaises(UpdaterError):
                 download_file("https://x/pkg.zip", Path("/tmp/_x.zip"))
+
+
+class AppPathsPlatformTest(unittest.TestCase):
+    """平台路径：Windows 打包用 %APPDATA%/%LOCALAPPDATA%。"""
+
+    def test_windows_frozen_paths(self):
+        import core.app_paths as ap
+
+        with mock.patch.object(ap.sys, "platform", "win32"), \
+                mock.patch.object(ap.sys, "frozen", True, create=True), \
+                mock.patch.dict(
+                    ap.os.environ,
+                    {"APPDATA": r"C:\Users\test\AppData\Roaming",
+                     "LOCALAPPDATA": r"C:\Users\test\AppData\Local"},
+                ):
+            data = ap.get_data_dir()
+            logs = ap.get_logs_dir()
+            # POSIX 测试机上 Path 不解析盘符：按组成部分断言
+            self.assertEqual(data.name, "WPS Enhancer")
+            self.assertIn("AppData", str(data))
+            self.assertEqual(logs.name, "Logs")
+            self.assertIn("Local", str(logs))
+
+    def test_non_frozen_paths_unchanged(self):
+        import core.app_paths as ap
+
+        with mock.patch.object(ap.sys, "frozen", False, create=True):
+            data = ap.get_data_dir()
+            self.assertEqual(data, ap.get_app_root())
+            self.assertEqual(ap.get_logs_dir(), ap.get_app_root() / "logs")
 
 
 if __name__ == "__main__":

@@ -18,12 +18,24 @@ from core.updater import (
 )
 from core.version import APP_VERSION
 
-_REPLACE_GUIDE = (
+_REPLACE_GUIDE_MAC = (
     "替换方法：\n"
     "1. 完全退出 WPS 增强工具\n"
     "2. 解压 zip，把新的 WPS增强工具.app 拖到「应用程序」覆盖旧版\n"
     "3. 若提示「无法验证开发者」，请右键点按 App → 打开\n"
 )
+_REPLACE_GUIDE_WIN = (
+    "替换方法：\n"
+    "1. 完全退出 WPS 增强工具\n"
+    "2. 解压 zip，用其中的文件覆盖安装目录（默认 C:\\Program Files\\WPSEnhancer 或你解压的位置）\n"
+    "3. 若出现 SmartScreen 提示，点「更多信息」→「仍要运行」\n"
+)
+
+
+def _replace_guide() -> str:
+    """按当前平台返回更新包替换指引。"""
+    import sys
+    return _REPLACE_GUIDE_WIN if sys.platform == "win32" else _REPLACE_GUIDE_MAC
 
 
 def check_update_now(parent: QWidget, silent_on_failure: bool) -> None:
@@ -98,5 +110,5 @@ def _handle_download_done(parent: QWidget, result: tuple) -> None:
         return
     QMessageBox.information(
         parent, "更新包已下载",
-        f"更新包已保存到：\n{payload}\n\n{_REPLACE_GUIDE}",
+        f"更新包已保存到：\n{payload}\n\n{_replace_guide()}",
     )

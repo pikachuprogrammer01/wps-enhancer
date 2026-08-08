@@ -24,7 +24,6 @@ Thumbs.db
 logs/
 
 # PyInstaller
-*.spec
 
 # 运行时数据
 settings.json

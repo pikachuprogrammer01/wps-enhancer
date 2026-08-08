@@ -62,19 +62,29 @@ def compare_versions(local: str, remote: str) -> int:
 
 
 @log_call("core.updater", log_args=False, log_result=False)
-def check_latest_release(repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT) -> ReleaseInfo:
-    """查询 GitHub Releases 最新版本（网络/解析失败抛 UpdaterError）。"""
+def check_latest_release(
+    repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT,
+    platform: Optional[str] = None,
+) -> ReleaseInfo:
+    """查询 GitHub Releases 最新版本（网络/解析失败抛 UpdaterError）。
+
+    platform：更新包匹配平台（"macos" / "windows"，默认按当前系统）。
+    """
+    platform = platform or _current_platform()
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     # certifi 根证书（python.org 的 Python 与 PyInstaller 冻结环境均无系统证书）
     context = ssl.create_default_context(cafile=certifi.where())
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
-            if resp.status == 404:
-                raise UpdaterError("仓库暂无已发布的版本（Release）")
             if resp.status != 200:
                 raise UpdaterError(f"GitHub API 返回状态码 {resp.status}")
             data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        # urlopen 对 4xx/5xx 直接抛 HTTPError（不返回响应体）
+        if e.code == 404:
+            raise UpdaterError("仓库暂无已发布的版本（Release）") from e
+        raise UpdaterError(f"GitHub API 返回状态码 {e.code}") from e
     except (urllib.error.URLError, TimeoutError) as e:
         raise UpdaterError(f"无法连接 GitHub：{e}") from e
     except (ValueError, KeyError) as e:
@@ -86,8 +96,8 @@ def check_latest_release(repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT) -> R
     zip_url: Optional[str] = None
     zip_size: Optional[int] = None
     for asset in data.get("assets", []) or []:
-        name = str(asset.get("name", ""))
-        if name.endswith(".zip"):
+        name = str(asset.get("name", "")).lower()
+        if name.endswith(".zip") and platform in name:
             zip_url = asset.get("browser_download_url") or zip_url
             zip_size = asset.get("size") or zip_size
     return ReleaseInfo(
@@ -97,6 +107,12 @@ def check_latest_release(repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT) -> R
         zip_size=zip_size,
         published_at=str(data.get("published_at", "")),
     )
+
+
+def _current_platform() -> str:
+    """返回当前系统对应的更新包平台标签。"""
+    import sys
+    return "windows" if sys.platform == "win32" else "macos"
 
 
 @log_call("core.updater", log_args=False)

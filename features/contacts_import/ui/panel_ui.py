@@ -250,7 +250,8 @@ class ContactsPanelUI:
         self._preview_text.setReadOnly(True)
         self._preview_text.setVisible(False)
         self._preview_text.setStyleSheet(
-            "font-family: Menlo, Monaco, monospace; font-size: 12px;",
+            "font-family: Menlo, Consolas, 'Courier New', monospace;"
+            " font-size: 12px;",
         )
         layout.addWidget(self._preview_text)
         self._toggle_btn = QPushButton()
