@@ -40,8 +40,9 @@ jobs:
         run: |
           cd dist
           # 资产名带架构（runner 架构 = 产物架构，动态获取不假设）
+          # -y 保留 symlink 不复制目标：否则 Qt framework 的 49 个 symlink 被解引用，包体膨胀 4-5 倍
           ARCH=$(uname -m)
-          zip -r "WPSEnhancer-macOS-${ARCH}.zip" "WPS增强工具.app"
+          zip -r -y "WPSEnhancer-macOS-${ARCH}.zip" "WPS增强工具.app"
 
       - name: Cleanup existing release
         # 根治旧资产混入：发布前删除同名旧 Release（资产随 Release 删除），从零重建
