@@ -51,7 +51,7 @@ python3.12 -m unittest discover tests -v
 PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增强工具.spec" --noconfirm
 ```
 
-产物：`dist/WPS增强工具.app`（macOS）/ `dist/WPS增强工具`（无 GUI 壳环境）。
+产物：`dist/WPS增强工具.app`（macOS，显示名中文）/ `dist/WPSEnhancer/`（Windows 产物目录，exe 名 `WPSEnhancer.exe`，ASCII 规避 PowerShell 编码问题）。
 
 > 打包模式：**onedir**（模块直接放在 `.app` 内，启动即用，约 0-1s；此前 onefile 每次启动解包到临时目录需 5-6s）。spec 中 `excludes` 排除了 `tkinter`/`lib2to3`/`pydoc_data`/`test`/`unittest` 等运行用不到的模块。
 
@@ -62,7 +62,7 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
    ```bash
    git tag v1.1.0 && git push origin v1.1.0
    ```
-3. 发布物：`WPS增强工具-macOS.zip` / `WPS增强工具-Windows.zip`（含 `.app` / `.exe`）
+3. 发布物：`WPSEnhancer-macOS.zip` / `WPSEnhancer-Windows.zip`（含 `.app` / `.exe`）
 4. 用户端（Mac / Windows）：设置 → 更新 → 「检查更新」（或启动时自动检查，可在设置中关闭）→ 按平台下载更新包 → 按指引替换
 
 > 不想打 tag 时也可在 GitHub Actions 页面手动触发（Run workflow，可指定测试 tag）。
