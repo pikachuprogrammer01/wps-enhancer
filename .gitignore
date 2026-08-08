@@ -15,6 +15,9 @@ env/
 .vscode/
 .reasonix
 
+# 根目录测试用临时模板（勿误伤 core/template/）
+/template/
+
 # OS
 .DS_Store
 Thumbs.db
