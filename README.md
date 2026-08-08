@@ -51,6 +51,8 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 
 产物：`dist/WPS增强工具.app`（macOS）/ `dist/WPS增强工具`（无 GUI 壳环境）。
 
+> 打包模式：**onedir**（模块直接放在 `.app` 内，启动即用，约 0-1s；此前 onefile 每次启动解包到临时目录需 5-6s）。spec 中 `excludes` 排除了 `tkinter`/`lib2to3`/`pydoc_data`/`test`/`unittest` 等运行用不到的模块。
+
 ### 验证打包产物
 
 1. 运行：`open "dist/WPS增强工具.app"`
@@ -70,6 +72,7 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 - **导出格式**：xlsx / xls / csv（编码可配置）/ vcf（vCard 3.0，字段可配置）/ txt（分隔符可配置）；默认导出格式为 **vcf**
 - **预览所见即所得**：xlsx/xls 表格预览；csv/txt/vcf 直接展示导出文件的真实文本内容（vcf 含姓名前后缀与时间戳效果）
 - **vcf 姓名自定义**：前缀（默认 `vcf_`）+ 后缀 + 「使用时间戳（年月日）」开关 + 时间戳位置（姓名前/姓名后），方便导入通讯录后按前缀批量管理
+- **vcf 多手机号区分**：同一姓名对应多个手机号时，姓名自动追加 `_1`、`_2`…（从 1 累加；单手机号不加），预览可见
 - **全局设置**：主窗口设置入口，配置项对后续功能通用
 
 详细规格见 `features/contacts_import/SPEC.md`，模板系统设计见 `docs/template_system.md`。

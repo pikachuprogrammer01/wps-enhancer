@@ -125,6 +125,7 @@ class ExportRow:
 - **模块**：`core/template/matcher.py`（纯函数）
 - 输出：`List[ColumnMatch]`（每个模板列对应 exact / alias / none 状态）
 - 未匹配（none）列：UI 标黄，需用户手动指定或置空
+- 应用成功后**直接进入步骤③预览与导出**（模板已保存映射，无需再调整；想改映射可点上一步回②）
 
 ### 步骤 6：手动调整映射
 
@@ -218,7 +219,7 @@ class ExportRow:
 | 项目 | 规格 |
 |------|------|
 | 记录粒度 | 一个手机号一条 vCard（与 xlsx 行数一致）；每 vCard 的字段 = 全局设置 `vcf_fields` 中**已映射**的内置列字段 |
-| FN | `vcf_fields` 含 `name` 且已映射 → `FN:{值}`（缺省时省略 FN） |
+| FN | `vcf_fields` 含 `name` 且已映射 → `FN:{值}`（缺省时省略 FN）；**同一姓名多个手机号时，姓名追加 `_1`、`_2`…序号**（按组内顺序从 1 累加；单手机号不加；合并开启时被置空的姓名恢复组首姓名再编号） |
 | TEL | `vcf_fields` 含 `phone` 且已映射 → `TEL;TYPE=CELL:{值}` |
 | ORG | `vcf_fields` 含 `company` 且已映射 → `ORG:{值}` |
 | URL | `vcf_fields` 含 `website` 且已映射 → `URL:{值}` |
