@@ -20,3 +20,23 @@ def get_logs_dir() -> Path:
         from core.mac_paths import get_mac_logs_dir
         return get_mac_logs_dir()
     return get_app_root() / "logs"
+
+
+def get_data_dir() -> Path:
+    """返回应用可写数据目录（模板/设置存放），兼容源码运行和 PyInstaller 打包运行。"""
+    if getattr(sys, "frozen", False) and sys.platform == "darwin":
+        from core.mac_paths import get_mac_data_dir
+        return get_mac_data_dir()
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return get_app_root()
+
+
+def get_templates_dir() -> Path:
+    """返回模板目录路径（<数据目录>/template/）。"""
+    return get_data_dir() / "template"
+
+
+def get_settings_path() -> Path:
+    """返回全局设置文件路径（<数据目录>/settings.json）。"""
+    return get_data_dir() / "settings.json"

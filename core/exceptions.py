@@ -26,3 +26,9 @@ class FileWriteError(WpsEnhancerError):
     """输出文件写入失败（路径无权限/磁盘空间不足）。"""
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+class TemplateError(WpsEnhancerError):
+    """模板操作失败（模板名为空/非法字符/模板目录不可写等）。"""
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

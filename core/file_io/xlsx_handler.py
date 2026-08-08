@@ -2,13 +2,20 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font
 from typing import List
 
-from core.file_io.base import BaseReader, BaseWriter, SheetData, WriteRequest
+from typing import List, Optional
+
+from core.file_io.base import (
+    BaseReader, BaseWriter, SheetData, WriteRequest,
+    is_declaration_first_row, is_empty_row,
+)
 from core.exceptions import FileReadError, FileWriteError
+from core.logger import log_call
 
 
 class XlsxReader(BaseReader):
     """基于 openpyxl 的 xlsx 文件读取器。"""
 
+    @log_call("core.file_io.xlsx", log_args=True)
     def get_sheet_names(self, file_path: str) -> List[str]:
         """读取文件中所有 Sheet 名称。"""
         try:
@@ -17,39 +24,45 @@ class XlsxReader(BaseReader):
         except Exception as e:
             raise FileReadError(f"无法读取文件 '{file_path}'：{type(e).__name__}: {e}") from e
 
-    @staticmethod
-    def _non_empty_count(row: tuple) -> int:
-        """统计一行中非空单元格的数量。"""
-        return sum(1 for c in row if c is not None and str(c).strip())
-
-    def _find_header_row(self, rows: list) -> int:
-        """在前 5 行中找非空单元格最多的行作为表头行。"""
-        scan_end = min(len(rows), 5)
-        best = max(range(scan_end), key=lambda i: self._non_empty_count(rows[i]))
-        return best
-
-    def read_sheet(self, file_path: str, sheet_name: str) -> SheetData:
-        """读取指定 Sheet 的表头和数据行。"""
+    @log_call("core.file_io.xlsx", log_args=True)
+    def read_sheet(
+        self, file_path: str, sheet_name: str,
+        skip_declaration: bool = False,
+        declaration_keywords: Optional[List[str]] = None,
+    ) -> SheetData:
+        """读取指定 Sheet 的表头和数据行（可选剔除首行声明，第一行即表头）。"""
         try:
             wb = openpyxl.load_workbook(file_path, data_only=True)
             ws = wb[sheet_name]
             all_rows = list(ws.iter_rows(values_only=True))
             wb.close()
+            # 跳过前导空行（声明行前常见空行）
+            while all_rows and is_empty_row(all_rows[0]):
+                all_rows.pop(0)
             if not all_rows:
                 raise FileReadError(
                     f"无法读取文件 '{file_path}'：Sheet '{sheet_name}' 为空"
                 )
-            header_row_idx = self._find_header_row(all_rows)
-            data_start = header_row_idx + 1
-            headers = [str(cell) if cell is not None else "" for cell in all_rows[header_row_idx]]
+            skipped = False
+            if skip_declaration and len(all_rows) >= 2 and is_declaration_first_row(
+                all_rows[0], all_rows[1], declaration_keywords,
+            ):
+                all_rows = all_rows[1:]
+                skipped = True
+                # 声明行后可能跟空行
+                while all_rows and is_empty_row(all_rows[0]):
+                    all_rows.pop(0)
+            headers = [str(cell) if cell is not None else "" for cell in all_rows[0]]
+            while headers and not headers[-1]:
+                headers.pop()  # 去掉尾部空表头列（文件最大列宽超出表头）
             rows = []
-            for row in all_rows[data_start:]:
+            for row in all_rows[1:]:
                 row_dict = {}
                 for i, header in enumerate(headers):
                     value = row[i] if i < len(row) else None
                     row_dict[header] = str(value) if value is not None else ""
                 rows.append(row_dict)
-            return SheetData(sheet_name=sheet_name, headers=headers, rows=rows)
+            return SheetData(sheet_name=sheet_name, headers=headers, rows=rows, declaration_skipped=skipped)
         except FileReadError:
             raise
         except Exception as e:
@@ -97,6 +110,7 @@ class XlsxWriter(BaseWriter):
                 fill = PatternFill(fill_type="solid", fgColor=color)
                 ws.cell(row=row_idx + 2, column=col_idx + 1).fill = fill
 
+    @log_call("core.file_io.xlsx", log_args=True)
     def write_export(self, request: WriteRequest) -> None:
         """写入导出数据，含合并单元格和背景色标记。"""
         try:

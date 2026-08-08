@@ -1,14 +1,19 @@
 import xlrd
 import xlwt
-from typing import List
+from typing import List, Optional
 
-from core.file_io.base import BaseReader, BaseWriter, SheetData, WriteRequest
+from core.file_io.base import (
+    BaseReader, BaseWriter, SheetData, WriteRequest,
+    is_declaration_first_row, is_empty_row,
+)
 from core.exceptions import FileReadError, FileWriteError
+from core.logger import log_call
 
 
 class XlsReader(BaseReader):
     """基于 xlrd 的 xls 文件读取器。"""
 
+    @log_call("core.file_io.xls", log_args=True)
     def get_sheet_names(self, file_path: str) -> List[str]:
         """读取文件中所有 Sheet 名称。"""
         try:
@@ -17,22 +22,13 @@ class XlsReader(BaseReader):
         except Exception as e:
             raise FileReadError(f"无法读取文件 '{file_path}'：{type(e).__name__}: {e}") from e
 
-    def _non_empty_count(self, sheet, row_idx: int) -> int:
-        """统计 xlrd Sheet 中某行非空单元格的数量。"""
-        count = 0
-        for col_idx in range(sheet.ncols):
-            if sheet.cell_type(row_idx, col_idx) != 0 and str(sheet.cell_value(row_idx, col_idx)).strip():
-                count += 1
-        return count
-
-    def _find_header_row(self, sheet) -> int:
-        """在前 5 行中找非空单元格最多的行作为表头行。"""
-        scan_end = min(sheet.nrows, 5)
-        best = max(range(scan_end), key=lambda i: self._non_empty_count(sheet, i))
-        return best
-
-    def read_sheet(self, file_path: str, sheet_name: str) -> SheetData:
-        """读取指定 Sheet 的表头和数据行。"""
+    @log_call("core.file_io.xls", log_args=True)
+    def read_sheet(
+        self, file_path: str, sheet_name: str,
+        skip_declaration: bool = False,
+        declaration_keywords: Optional[List[str]] = None,
+    ) -> SheetData:
+        """读取指定 Sheet 的表头和数据行（可选剔除首行声明，第一行即表头）。"""
         try:
             wb = xlrd.open_workbook(file_path)
             sheet = wb.sheet_by_name(sheet_name)
@@ -40,9 +36,32 @@ class XlsReader(BaseReader):
                 raise FileReadError(
                     f"无法读取文件 '{file_path}'：Sheet '{sheet_name}' 为空"
                 )
-            header_row = self._find_header_row(sheet)
+            skipped = False
+            header_row = 0
+            # 跳过前导空行（声明行前常见空行）
+            while header_row < sheet.nrows and is_empty_row(sheet.row_values(header_row)):
+                header_row += 1
+            if header_row >= sheet.nrows:
+                raise FileReadError(
+                    f"无法读取文件 '{file_path}'：Sheet '{sheet_name}' 为空"
+                )
+            if skip_declaration and sheet.nrows - header_row >= 2 and is_declaration_first_row(
+                sheet.row_values(header_row), sheet.row_values(header_row + 1),
+                declaration_keywords,
+            ):
+                header_row += 1
+                skipped = True
+                # 声明行后可能跟空行
+                while header_row < sheet.nrows and is_empty_row(sheet.row_values(header_row)):
+                    header_row += 1
+                if header_row >= sheet.nrows:
+                    raise FileReadError(
+                        f"无法读取文件 '{file_path}'：Sheet '{sheet_name}' 为空"
+                    )
             data_start = header_row + 1
             headers = [str(v) for v in sheet.row_values(header_row)]
+            while headers and not headers[-1].strip():
+                headers.pop()  # 去掉尾部空表头列（文件最大列宽超出表头）
             rows = []
             for row_idx in range(data_start, sheet.nrows):
                 row_dict = {}
@@ -58,7 +77,7 @@ class XlsReader(BaseReader):
                         str_value = str(cell_value)
                     row_dict[header] = str_value
                 rows.append(row_dict)
-            return SheetData(sheet_name=sheet_name, headers=headers, rows=rows)
+            return SheetData(sheet_name=sheet_name, headers=headers, rows=rows, declaration_skipped=skipped)
         except FileReadError:
             raise
         except Exception as e:
@@ -84,6 +103,7 @@ class XlsWriter(BaseWriter):
             return None
         return style
 
+    @log_call("core.file_io.xls", log_args=True)
     def write_export(self, request: WriteRequest) -> None:
         """写入导出数据，含合并单元格和背景色标记。"""
         try:
