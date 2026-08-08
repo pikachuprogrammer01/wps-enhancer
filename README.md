@@ -97,12 +97,15 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 ## 项目结构
 
 ```
-├── main.py                      # 应用入口
+├── main.py                      # 应用入口（setrecursionlimit 兼容打包环境）
 ├── core/                        # 公共基础设施
 │   ├── exceptions.py            # 全局异常定义
-│   ├── logger.py                # 统一日志模块
+│   ├── logger.py                # 统一日志模块（log_call AOP 装饰器）
 │   ├── settings.py              # 全局设置（settings.json）读写入口
-│   ├── app_paths.py             # 应用路径工具
+│   ├── app_paths.py             # 平台路径（macOS ~/Library / Windows %APPDATA%）
+│   ├── mac_paths.py             # macOS 打包专用路径
+│   ├── updater.py               # 自动更新（GitHub Releases 检查/比较/下载）
+│   ├── version.py               # 应用版本号（APP_VERSION，tag v* 触发发布）
 │   ├── template/                # 模板系统（模型/存储/匹配/管理器）
 │   └── file_io/                 # 文件读写抽象层
 │       ├── base.py              # Reader/Writer 抽象接口
@@ -113,16 +116,31 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 │       └── txt_handler.py       # txt 格式写入
 ├── features/                    # 功能模块（每个功能一个子包）
 │   └── contacts_import/         # Excel 批量导入通讯录
-│       ├── config.py            # 配置与数据结构
+│       ├── panel.py             # 主面板（流程编排，组合各 mixin）
 │       ├── processor.py         # 纯业务逻辑（无 IO、无 UI）
-│       ├── panel.py             # UI 面板
+│       ├── config.py            # 配置与数据结构
+│       ├── ui/                  # 界面层拆分
+│       │   ├── base.py              # 常量、_safe_slot、弹窗共享引用
+│       │   ├── panel_ui.py          # 控件构建
+│       │   ├── template_table.py    # 模板表格
+│       │   ├── mapping_table.py     # 列映射表格
+│       │   ├── preview.py           # 预览展示
+│       │   ├── template_actions.py  # 模板管理流程
+│       │   └── export_actions.py    # 导出流程
 │       └── SPEC.md              # 功能规格文档
 ├── docs/                        # 设计文档
 │   └── template_system.md       # 模板系统设计文档
-├── template/                    # 用户模板目录（运行时创建）
-└── ui/                          # 通用 UI 组件
-    ├── main_window.py           # 主窗口（自动发现功能面板 + 设置入口）
-    └── components/              # 可复用 UI 组件
+├── ui/                          # 通用 UI 组件
+│   ├── main_window.py           # 主窗口（功能发现 + 设置入口 + 启动自动更新检查）
+│   └── components/              # 可复用 UI 组件
+│       ├── settings_dialog.py   # 全局设置对话框（导入/导出/内置列/日志/更新）
+│       ├── file_picker.py       # 文件选择控件
+│       ├── status_bar.py        # 状态栏
+│       ├── template_edit_dialog.py # 模板列编辑对话框
+│       └── update_flow.py       # 更新检查/下载引导流程
+├── .github/workflows/           # CI：tag v* 自动构建 macOS + Windows 并发布
+├── tests/                       # 单元/UI/端到端测试（unittest）
+└── WPSEnhancer.spec 相关         # 打包配置（WPS增强工具.spec）
 ```
 
 ## 技术栈
