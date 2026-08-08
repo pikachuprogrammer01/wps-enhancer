@@ -64,10 +64,10 @@ class CheckReleaseTest(unittest.TestCase):
             "html_url": "https://x",
             "published_at": "2026-08-09T00:00:00Z",
             "assets": [
-                {"name": "WPS增强工具-macOS.zip",
-                 "browser_download_url": "https://x/mac.zip", "size": 1},
-                {"name": "WPS增强工具-Windows.zip",
-                 "browser_download_url": "https://x/win.zip", "size": 2},
+                {"name": "WPSEnhancer-macOS-arm64.zip",
+                 "browser_download_url": "https://x/mac-arm.zip", "size": 1},
+                {"name": "WPSEnhancer-Windows-x86_64.zip",
+                 "browser_download_url": "https://x/win-x64.zip", "size": 2},
             ],
         }
         with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
@@ -75,10 +75,32 @@ class CheckReleaseTest(unittest.TestCase):
             resp.status = 200
             resp.read.return_value = __import__("json").dumps(payload).encode()
             urlopen.return_value.__enter__.return_value = resp
-            mac = check_latest_release(platform="macos")
-            win = check_latest_release(platform="windows")
-        self.assertTrue(mac.zip_url.endswith("mac.zip"))
-        self.assertTrue(win.zip_url.endswith("win.zip"))
+            mac = check_latest_release(platform="macos", arch="arm64")
+            win = check_latest_release(platform="windows", arch="x86_64")
+            # 架构不匹配时回退：mac 机器在 x86_64 资产上按平台匹配不到架构 → 回退平台
+            mac_fallback = check_latest_release(platform="macos", arch="x86_64")
+        self.assertTrue(mac.zip_url.endswith("mac-arm.zip"))
+        self.assertTrue(win.zip_url.endswith("win-x64.zip"))
+        self.assertTrue(mac_fallback.zip_url.endswith("mac-arm.zip"))
+
+    def test_check_latest_release_legacy_asset_fallback(self):
+        """旧资产（无架构标签）也能被平台匹配命中（回退）。"""
+        payload = {
+            "tag_name": "v1.0.0",
+            "html_url": "https://x",
+            "published_at": "2026-08-08T00:00:00Z",
+            "assets": [
+                {"name": "WPSEnhancer-macOS.zip",
+                 "browser_download_url": "https://x/mac.zip", "size": 1},
+            ],
+        }
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            resp = mock.MagicMock()
+            resp.status = 200
+            resp.read.return_value = __import__("json").dumps(payload).encode()
+            urlopen.return_value.__enter__.return_value = resp
+            info = check_latest_release(platform="macos", arch="arm64")
+        self.assertTrue(info.zip_url.endswith("mac.zip"))
 
     def test_check_latest_release_http_error(self):
         """404（暂无 Release）与 500 分别给出明确错误。"""

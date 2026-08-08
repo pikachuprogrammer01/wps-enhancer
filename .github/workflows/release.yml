@@ -38,13 +38,16 @@ jobs:
 
       - name: Package zip (macOS)
         run: |
-          cd dist && zip -r "WPSEnhancer-macOS.zip" "WPS增强工具.app"
+          cd dist
+          # 资产名带架构（runner 架构 = 产物架构，动态获取不假设）
+          ARCH=$(uname -m)
+          zip -r "WPSEnhancer-macOS-${ARCH}.zip" "WPS增强工具.app"
 
       - name: Publish Release (macOS)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
-          files: dist/WPSEnhancer-macOS.zip
+          files: dist/WPSEnhancer-macOS-*.zip
           generate_release_notes: true
 
   build-windows:
@@ -71,11 +74,13 @@ jobs:
       - name: Package zip (Windows)
         shell: powershell
         run: |
-          Compress-Archive -Path dist/WPSEnhancer/* -DestinationPath dist/WPSEnhancer-Windows.zip
+          # 资产名带架构（windows-latest 为 x64，动态获取不假设）
+          $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'AMD64') { 'x86_64' } else { $env:PROCESSOR_ARCHITECTURE.ToLower() }
+          Compress-Archive -Path dist/WPSEnhancer/* -DestinationPath "dist/WPSEnhancer-Windows-$arch.zip"
 
       - name: Publish Release (Windows)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
-          files: dist/WPSEnhancer-Windows.zip
+          files: dist/WPSEnhancer-Windows-*.zip
           generate_release_notes: true

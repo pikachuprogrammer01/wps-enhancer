@@ -64,13 +64,16 @@ def compare_versions(local: str, remote: str) -> int:
 @log_call("core.updater", log_args=False, log_result=False)
 def check_latest_release(
     repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT,
-    platform: Optional[str] = None,
+    platform: Optional[str] = None, arch: Optional[str] = None,
 ) -> ReleaseInfo:
     """查询 GitHub Releases 最新版本（网络/解析失败抛 UpdaterError）。
 
-    platform：更新包匹配平台（"macos" / "windows"，默认按当前系统）。
+    platform：更新包平台标签（"macos"/"windows"，默认按当前系统）；
+    arch：架构标签（"arm64"/"x86_64"，默认按当前机器）。
+    资产匹配：优先「平台+架构」精确匹配，回退「仅平台」匹配（兼容旧资产）。
     """
     platform = platform or _current_platform()
+    arch = arch or _current_arch()
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     # certifi 根证书（python.org 的 Python 与 PyInstaller 冻结环境均无系统证书）
@@ -93,13 +96,13 @@ def check_latest_release(
     tag = str(data.get("tag_name", ""))
     if not tag:
         raise UpdaterError("Release 缺少版本号（tag_name）")
-    zip_url: Optional[str] = None
-    zip_size: Optional[int] = None
-    for asset in data.get("assets", []) or []:
-        name = str(asset.get("name", "")).lower()
-        if name.endswith(".zip") and platform in name:
-            zip_url = asset.get("browser_download_url") or zip_url
-            zip_size = asset.get("size") or zip_size
+    assets = data.get("assets", []) or []
+    # 优先精确匹配（平台+架构），如 WPSEnhancer-macOS-arm64.zip
+    exact = _find_asset(assets, platform, arch)
+    if exact is None:
+        exact = _find_asset(assets, platform, None)  # 回退仅平台（旧资产）
+    zip_url = exact.get("browser_download_url") if exact else None
+    zip_size = exact.get("size") if exact else None
     return ReleaseInfo(
         tag_name=tag,
         html_url=str(data.get("html_url", url)),
@@ -109,10 +112,33 @@ def check_latest_release(
     )
 
 
+def _find_asset(assets: list, platform: str, arch: Optional[str]) -> Optional[dict]:
+    """在资产列表中按平台（+可选架构）匹配 zip 资产。"""
+    for asset in assets:
+        name = str(asset.get("name", "")).lower()
+        if not name.endswith(".zip"):
+            continue
+        if platform not in name:
+            continue
+        if arch is not None and arch not in name:
+            continue
+        return asset
+    return None
+
+
 def _current_platform() -> str:
     """返回当前系统对应的更新包平台标签。"""
     import sys
     return "windows" if sys.platform == "win32" else "macos"
+
+
+def _current_arch() -> str:
+    """返回当前机器架构标签（arm64 / x86_64）。"""
+    import platform
+    machine = platform.machine().lower()
+    if machine in ("aarch64", "arm64"):
+        return "arm64"
+    return "x86_64"
 
 
 @log_call("core.updater", log_args=False)
