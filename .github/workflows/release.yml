@@ -1,10 +1,17 @@
 name: Release
 
-# 推送 v* 标签（如 v1.1.0）时自动打包并发布到 GitHub Releases（macOS + Windows）
+# 自动发布：推送 v* 标签（如 v1.1.0）时构建 macOS + Windows 双版本并上传 Releases
+# 也可手动触发（Actions 页面 → Run workflow）测试构建
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '发布标签名（手动触发时使用，如 v1.0.0-test）'
+        required: false
+        default: 'v-test-build'
 
 permissions:
   contents: write
@@ -24,7 +31,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pyinstaller
 
       - name: Build app
         run: |
@@ -34,13 +40,16 @@ jobs:
         run: |
           cd dist && zip -r "WPS增强工具-macOS.zip" "WPS增强工具.app"
 
-      - name: Publish Release
+      - name: Publish Release (macOS)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: dist/WPS增强工具-macOS.zip
           generate_release_notes: true
 
   build-windows:
+    # 串行依赖 macOS job：确保 Release 先由 macOS job 创建，Windows 只附加资产（避免并发竞态）
+    needs: build-macos
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -54,7 +63,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pyinstaller
 
       - name: Build app (Windows)
         run: |
@@ -65,8 +73,9 @@ jobs:
         run: |
           Compress-Archive -Path dist/WPS增强工具/* -DestinationPath dist/WPS增强工具-Windows.zip
 
-      - name: Publish Release
+      - name: Publish Release (Windows)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: dist/WPS增强工具-Windows.zip
           generate_release_notes: true
