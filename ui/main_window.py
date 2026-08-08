@@ -23,6 +23,7 @@ class MainWindow(QMainWindow):
         self._features: List[Tuple[str, str, Type[QWidget]]] = []
         self._load_features()
         self._setup_ui()
+        self._schedule_update_check()
 
     def _load_features(self) -> None:
         """扫描 features/ 目录，动态导入各功能子包。"""
@@ -185,3 +186,15 @@ class MainWindow(QMainWindow):
     def _open_settings(self) -> None:
         """打开全局设置对话框。"""
         SettingsDialog(self).exec()
+
+    def _schedule_update_check(self) -> None:
+        """启动延迟数秒后按设置自动检查更新（失败静默，不打扰使用）。"""
+        try:
+            from core.settings import get_app_settings
+            if not get_app_settings().auto_update_enabled:
+                return
+        except Exception:
+            return
+        from PyQt6.QtCore import QTimer
+        from ui.components.update_flow import check_update_now
+        QTimer.singleShot(4000, lambda: check_update_now(self, True))

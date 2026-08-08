@@ -46,8 +46,46 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_export_tab(), "导出格式")
         tabs.addTab(self._build_builtin_tab(), "内置列")
         tabs.addTab(self._build_log_tab(), "日志")
+        tabs.addTab(self._build_update_tab(), "更新")
         layout.addWidget(tabs)
         layout.addLayout(self._build_buttons())
+
+    def _build_update_tab(self) -> QWidget:
+        """更新：自动检查开关 + 手动检查按钮 + 版本信息。"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(self._build_update_group())
+        layout.addStretch()
+        return page
+
+    def _build_update_group(self) -> QGroupBox:
+        """更新分组（GitHub Releases 自动更新）。"""
+        from core.version import APP_VERSION
+        group = QGroupBox("更新")
+        layout = QVBoxLayout(group)
+        self._auto_update_check = QCheckBox("自动检查更新（启动时检查 GitHub Releases）")
+        self._auto_update_check.setChecked(self._settings.auto_update_enabled)
+        layout.addWidget(self._auto_update_check)
+        row = QHBoxLayout()
+        row.addWidget(QLabel(f"当前版本：v{APP_VERSION}"))
+        row.addStretch()
+        self._check_update_btn = QPushButton("检查更新")
+        self._check_update_btn.clicked.connect(self._on_check_update)
+        row.addWidget(self._check_update_btn)
+        layout.addLayout(row)
+        self._update_status_label = QLabel("")
+        self._update_status_label.setStyleSheet("color: #666666;")
+        self._update_status_label.setWordWrap(True)
+        layout.addWidget(self._update_status_label)
+        return group
+
+    def _on_check_update(self) -> None:
+        """手动检查更新（后台检查，结果弹窗）。"""
+        from ui.components.update_flow import check_update_now
+        self._check_update_btn.setEnabled(False)
+        self._update_status_label.setText("正在检查更新…")
+        check_update_now(self, silent_on_failure=False)
+        self._check_update_btn.setEnabled(True)
 
     def _build_import_tab(self) -> QWidget:
         """导入处理：手机号处理 + 文件处理（声明检测）。"""
@@ -352,6 +390,7 @@ class SettingsDialog(QDialog):
                 if k.strip()
             ],
             log_debug=self._log_debug_check.isChecked(),
+            auto_update_enabled=self._auto_update_check.isChecked(),
         )
         return settings
 

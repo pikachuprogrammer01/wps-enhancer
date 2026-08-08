@@ -43,6 +43,7 @@ class AppSettings:
         default_factory=lambda: list(DEFAULT_DECLARATION_KEYWORDS),
     )
     log_debug: bool = False
+    auto_update_enabled: bool = True  # 启动时自动检查 GitHub Releases 更新
 
 
 _cache: Optional[AppSettings] = None
@@ -68,6 +69,7 @@ def _settings_dict(settings: AppSettings) -> dict:
             "declaration_detect": settings.declaration_detect,
             "declaration_keywords": list(settings.declaration_keywords),
             "log_debug": settings.log_debug,
+            "auto_update_enabled": settings.auto_update_enabled,
         },
     }
 
@@ -131,6 +133,9 @@ def _load_from_file(path: Path) -> AppSettings:
             str(k) for k in app.get("declaration_keywords", list(defaults.declaration_keywords))
         ],
         log_debug=bool(app.get("log_debug", defaults.log_debug)),
+        auto_update_enabled=bool(app.get(
+            "auto_update_enabled", defaults.auto_update_enabled,
+        )),
     )
 
 
