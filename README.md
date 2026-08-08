@@ -1,12 +1,14 @@
 # WPS Enhancer
 
-为 WPS 表格提供增强功能的跨平台桌面应用。
+为 WPS 表格提供增强功能的跨平台桌面应用（macOS / Windows）。
 
 ## 当前功能
 
 | 功能 | 描述 | 状态 |
 |------|------|------|
 | **Excel 批量导入通讯录** | 选择源表格与模板，按列映射生成新表格，支持 xlsx / xls / csv / vcf / txt 导出 | 已实现 |
+
+> **平台支持**：macOS 与 Windows（PyQt6 跨平台）。路径规范：macOS 打包用 `~/Library/Application Support|Logs`，Windows 打包用 `%APPDATA%` / `%LOCALAPPDATA%`；自动更新按平台下载对应更新包。
 
 ## 快速开始
 
@@ -56,12 +58,12 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 ### 发布新版本（自动更新）
 
 1. 更新 `core/version.py` 的 `APP_VERSION`（如 `1.1.0`）
-2. 打标签并推送（GitHub Actions 自动打包上传 Releases）：
+2. 打标签并推送（GitHub Actions 自动打包 macOS + Windows 并上传 Releases）：
    ```bash
    git tag v1.1.0 && git push origin v1.1.0
    ```
-3. 发布物：`WPS增强工具.zip`（含 `.app`）
-4. 用户端：设置 → 更新 → 「检查更新」（或启动时自动检查，可在设置中关闭）→ 下载 zip → 按指引替换 .app
+3. 发布物：`WPS增强工具-macOS.zip` / `WPS增强工具-Windows.zip`（含 `.app` / `.exe`）
+4. 用户端：设置 → 更新 → 「检查更新」（或启动时自动检查，可在设置中关闭）→ 按平台下载更新包 → 按指引替换
 
 > ⚠️ 当前 app 为 ad-hoc 签名，从 GitHub 下载的 .app 首次打开需右键 → 打开（或 `xattr -d com.apple.quarantine <路径>`）绕过 Gatekeeper。
 
