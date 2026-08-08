@@ -43,6 +43,14 @@ jobs:
           ARCH=$(uname -m)
           zip -r "WPSEnhancer-macOS-${ARCH}.zip" "WPS增强工具.app"
 
+      - name: Cleanup existing release
+        # 根治旧资产混入：发布前删除同名旧 Release（资产随 Release 删除），从零重建
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          gh release delete "$TAG" --yes 2>/dev/null || true
+
       - name: Publish Release (macOS)
         uses: softprops/action-gh-release@v2
         with:
