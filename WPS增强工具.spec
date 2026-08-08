@@ -43,7 +43,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='WPS增强工具',
+    name='WPSEnhancer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -62,7 +62,7 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='WPS增强工具',
+    name='WPSEnhancer',
 )
 if sys.platform == "darwin":
     app = BUNDLE(

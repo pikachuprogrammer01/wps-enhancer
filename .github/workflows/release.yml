@@ -38,13 +38,13 @@ jobs:
 
       - name: Package zip (macOS)
         run: |
-          cd dist && zip -r "WPS增强工具-macOS.zip" "WPS增强工具.app"
+          cd dist && zip -r "WPSEnhancer-macOS.zip" "WPS增强工具.app"
 
       - name: Publish Release (macOS)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
-          files: dist/WPS增强工具-macOS.zip
+          files: dist/WPSEnhancer-macOS.zip
           generate_release_notes: true
 
   build-windows:
@@ -71,11 +71,11 @@ jobs:
       - name: Package zip (Windows)
         shell: powershell
         run: |
-          Compress-Archive -Path dist/WPS增强工具/* -DestinationPath dist/WPS增强工具-Windows.zip
+          Compress-Archive -Path dist/WPSEnhancer/* -DestinationPath dist/WPSEnhancer-Windows.zip
 
       - name: Publish Release (Windows)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
-          files: dist/WPS增强工具-Windows.zip
+          files: dist/WPSEnhancer-Windows.zip
           generate_release_notes: true
