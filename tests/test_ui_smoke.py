@@ -594,7 +594,7 @@ class UiSmokeTest(unittest.TestCase):
         panel.close()
 
     def test_auto_template_decision_matching(self):
-        """选文件后：模板能匹配 → 停在步骤①等用户点应用；应用后自动进②。"""
+        """选文件后：模板能匹配 → 停在步骤①等用户点应用；应用后直接进③预览。"""
         import tempfile
         from unittest import mock
         from core.file_io.base import SheetData
@@ -625,10 +625,10 @@ class UiSmokeTest(unittest.TestCase):
             # 匹配上：停在数据源步骤，等用户应用
             self.assertEqual(panel._stack.currentIndex(), 0)
             self.assertIsNone(panel._template)
-            # 选择并应用 → 自动进入列映射
+            # 选择并应用 → 直接进入预览与导出（映射来自模板）
             panel._select_template_by_name("企查查模板")
             panel._apply_template()
-        self.assertEqual(panel._stack.currentIndex(), 1)
+        self.assertEqual(panel._stack.currentIndex(), 2)
         self.assertEqual(panel._template.name, "企查查模板")
         panel.close()
 

@@ -227,6 +227,11 @@ def build_write_request(
         -1,
     )
     data_rows = [row.values for row in preview.rows]
+    if _output_suffix(output_path) == "vcf":
+        # vcf：同一姓名多个手机号时姓名追加 _1/_2 序号（仅 vcf，其余格式不受影响）
+        data_rows = _vcf_indexed_rows(
+            data_rows, [r.merge_span for r in preview.rows], name_index,
+        )
     merge_ranges = _build_merge_ranges(preview.rows, name_index, settings.phone_merge)
     cell_styles = _build_cell_styles(preview.rows, phone_index, settings.phone_highlight)
     return WriteRequest(
@@ -242,6 +247,47 @@ def build_write_request(
         vcf_name_prefix=_effective_vcf_prefix(settings),
         vcf_name_suffix=_effective_vcf_suffix(settings),
     )
+
+
+def _output_suffix(output_path: str) -> str:
+    """返回输出文件后缀（无后缀返回空串）。"""
+    return output_path.lower().rsplit(".", 1)[-1] if "." in output_path else ""
+
+
+def _vcf_indexed_rows(
+    rows: List[List[str]], spans: List[int], name_index: int,
+) -> List[List[str]]:
+    """vcf 导出行：同姓名多手机号（merge_span>1 的组）姓名追加 _1/_2 序号。
+
+    序号按组内位置从 1 累加；单行组不加序号；姓名已为空的行不追加。
+    """
+    if name_index < 0:
+        return rows
+    result = [list(r) for r in rows]
+    i = 0
+    while i < len(result):
+        span = spans[i]
+        if span > 1:
+            # 预览截断时组可能被切断：实际组内行数 = min(span, 剩余行数)
+            group_end = min(i + span, len(result))
+            # vcf 无合并概念：组内被置空的姓名恢复为组首姓名
+            base_name = next(
+                (
+                    result[j][name_index]
+                    for j in range(i, group_end) if result[j][name_index]
+                ),
+                "",
+            )
+            for k in range(group_end - i):
+                idx = i + k
+                if result[idx][name_index]:
+                    result[idx][name_index] = f"{result[idx][name_index]}_{k + 1}"
+                elif base_name:
+                    result[idx][name_index] = f"{base_name}_{k + 1}"
+            i = group_end
+        else:
+            i += 1
+    return result
 
 
 def _vcf_timestamp(settings: AppSettings) -> str:
@@ -318,6 +364,16 @@ def build_text_preview(
     if fmt == "vcf":
         from core.file_io.base import WriteRequest
         from core.file_io.vcf_handler import build_vcf_lines
+        name_index = next(
+            (i for i, m in enumerate(enabled) if m.template_col.key == "name"),
+            -1,
+        )
+        # 先对全量行做序号（组完整性），再截断显示行数
+        all_rows = _vcf_indexed_rows(
+            [r.values for r in preview.rows],
+            [r.merge_span for r in preview.rows], name_index,
+        )
+        data_rows = all_rows[:row_limit]
         request = WriteRequest(
             file_path="",
             headers=headers,

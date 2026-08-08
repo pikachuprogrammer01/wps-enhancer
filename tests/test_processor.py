@@ -293,6 +293,79 @@ class WriteRequestTest(unittest.TestCase):
         )
         self.assertEqual(req.vcf_name_prefix, "vcf_")
 
+    def test_vcf_name_index_for_multi_phones(self):
+        """同姓名多手机号导出 vcf：姓名追加 _1/_2 序号（从 1 累加）；其余格式不受影响。"""
+        from features.contacts_import.processor import (
+            _vcf_indexed_rows, build_text_preview,
+        )
+
+        # 同一源行 2 个手机号（拆分）→ _1/_2
+        settings = AppSettings(phone_validate=False, vcf_timestamp=False)
+        preview = build_preview_data(_sheet(), self.template, self.matches, settings)
+        rows = [r.values for r in preview.rows]
+        spans = [r.merge_span for r in preview.rows]
+        indexed = _vcf_indexed_rows(rows, spans, 0)
+        self.assertEqual(indexed[0][0], "张三_1")
+        self.assertEqual(indexed[1][0], "张三_2")
+        # 单手机号行不加序号（李四、王五）
+        for r in indexed[2:]:
+            self.assertNotIn("_", r[0])
+        # vcf 导出请求：data_rows 带序号；xlsx 不带
+        req_vcf = build_write_request(preview, self.template, self.matches, settings, "/tmp/o.vcf")
+        self.assertEqual(req_vcf.data_rows[0][0], "张三_1")
+        req_xlsx = build_write_request(preview, self.template, self.matches, settings, "/tmp/o.xlsx")
+        self.assertEqual(req_xlsx.data_rows[0][0], "张三")
+        # vcf 文本预览：FN 带序号，与导出一致（默认前缀 vcf_）
+        vcf_text = build_text_preview(preview, self.matches, settings, "vcf")
+        self.assertIn("FN:vcf_张三_1", vcf_text)
+        self.assertIn("FN:vcf_张三_2", vcf_text)
+        # 不同源行同名（合并开启）：跨行组也编号
+        merge_settings = AppSettings(phone_merge=True, phone_validate=False, vcf_timestamp=False)
+        sheet2 = SheetData(
+            sheet_name="s", headers=["姓名", "手机号"],
+            rows=[
+                {"姓名": "张三", "手机号": "13800000001"},
+                {"姓名": "张三", "手机号": "13800000002"},
+            ],
+        )
+        preview2 = build_preview_data(sheet2, self.template, self.matches, merge_settings)
+        indexed2 = _vcf_indexed_rows(
+            [r.values for r in preview2.rows],
+            [r.merge_span for r in preview2.rows], 0,
+        )
+        self.assertEqual(indexed2[0][0], "张三_1")
+        self.assertEqual(indexed2[1][0], "张三_2")
+
+    def test_vcf_indexed_rows_truncated_group(self):
+        """预览截断（组跨越行数上限）不得越界崩溃，序号保持正确。"""
+        from features.contacts_import.processor import (
+            _vcf_indexed_rows, build_text_preview,
+        )
+
+        # 单测：rows 与 spans 完整一致时组内正确编号（防回归）
+        rows = [
+            ["张三", "138"], ["张三", "139"], ["张三", "140"],
+            ["李四", "137"], ["王五", "136"],
+        ]
+        indexed = _vcf_indexed_rows(rows, [3, 3, 3, 1, 1], 0)
+        self.assertEqual(
+            [r[0] for r in indexed],
+            ["张三_1", "张三_2", "张三_3", "李四", "王五"],
+        )
+        # 真实截断场景：row_limit 落在拆分组中间 → 不崩溃且序号从组内正确
+        settings = AppSettings(phone_validate=False, vcf_timestamp=False)
+        preview = build_preview_data(_sheet(), self.template, self.matches, settings)
+        text = build_text_preview(preview, self.matches, settings, "vcf", row_limit=2)
+        # 张三组（span=2）在截断边界内：_1/_2 正确
+        self.assertIn("FN:vcf_张三_1", text)
+        self.assertIn("FN:vcf_张三_2", text)
+        self.assertNotIn("FN:vcf_李四", text)  # 截断在第 2 行后
+        # 展开（row_limit 全量）同样正常
+        text_full = build_text_preview(
+            preview, self.matches, settings, "vcf", row_limit=99,
+        )
+        self.assertIn("FN:vcf_王五", text_full)
+
 
 if __name__ == "__main__":
     unittest.main()

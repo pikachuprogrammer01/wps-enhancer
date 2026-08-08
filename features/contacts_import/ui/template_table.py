@@ -198,7 +198,7 @@ class TemplateTableMixin:
             self._manual_map = dict(template.mappings)
         self._rebuild_matches()
         self._refresh_preview()
-        self._goto_step(1)  # 应用成功自动去下一步（列映射）
+        self._goto_step(2)  # 应用成功直接进入预览与导出（映射已在模板中）
         get_logger("contacts_import.panel").info(
             f"模板 '{name}' 应用成功，映射列数={len(self._matches)}"
         )
