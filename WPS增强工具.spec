@@ -9,9 +9,6 @@ hiddenimports += collect_submodules('core')
 hiddenimports += collect_submodules('ui')
 
 # onedir 模式：免去每次启动解包（onefile 每次启动解压到临时目录，启动慢）
-# 排除运行用不到的模块，减小体积
-excludes = ['tkinter', 'lib2to3', 'pydoc_data', 'test', 'unittest']
-
 a = Analysis(
     ['main.py'],
     pathex=[],
@@ -21,10 +18,24 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=excludes,
+    # 排除运行用不到的模块（环境残留被 hook 保守收集），减小体积
+    excludes=['tkinter', 'lib2to3', 'pydoc_data', 'test', 'unittest',
+              'numpy', 'PIL', 'yaml', 'charset_normalizer'],
     noarchive=False,
     optimize=0,
 )
+
+# 排除 app 用不到的 Qt 库与可选图像插件（QtCore/QtGui/QtWidgets/QtDBus/QtSvg 保留——
+# QtGui 硬依赖 QtDBus，imageformats 的 qsvg 插件依赖 QtSvg）
+_BIN_EXCLUDE = ('QtPdf', 'QtNetwork',
+                'libavif', 'libtiff', 'libwebp', 'libopenjp2', 'liblcms2')
+a.binaries = [
+    b for b in a.binaries
+    if not any(p in b[0] for p in _BIN_EXCLUDE)
+]
+# 排除 Qt 自带翻译文件（界面中文硬编码，不用 Qt 翻译系统）
+a.datas = [d for d in a.datas if '/translations/' not in d[0]]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
