@@ -1,6 +1,10 @@
 import sys
 import traceback
 
+# 打包版（PyInstaller 冻结环境）下 openpyxl 初始化 descriptor 链会触发
+# RecursionError，必须在一开始就提高递归深度（openpyxl 导入之前）。
+sys.setrecursionlimit(10000)
+
 from PyQt6.QtWidgets import QApplication
 
 from core.app_paths import get_data_dir

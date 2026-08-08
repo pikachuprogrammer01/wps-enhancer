@@ -163,6 +163,8 @@ class ContactsImportPanel(
         path = self._file_picker.get_file_path().strip()
         if not path:
             return
+        if path == self._file_path:
+            return  # 路径未变化：避免失焦/回车重复触发重新加载链
         suffix = Path(path).suffix.lower().lstrip(".")
         if suffix not in ("xls", "xlsx", "csv"):
             _dlg.QMessageBox.warning(
