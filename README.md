@@ -6,7 +6,7 @@
 
 | 功能 | 描述 | 状态 |
 |------|------|------|
-| **手机号导出** | 从 Excel 文件中提取姓名和手机号，按通讯录导入模板导出为新文件 | MVP |
+| **Excel 批量导入通讯录** | 选择源表格与模板，按列映射生成新表格，支持 xlsx / xls / csv / vcf / txt 导出 | 已实现 |
 
 ## 快速开始
 
@@ -30,26 +30,49 @@ pip install -r requirements.txt
 ### 运行
 
 ```bash
-python main.py
+# 必须用 python3.12（依赖只装在 3.12，系统默认 python3 可能是其他版本）
+python3.12 main.py
+```
+
+### 运行单元测试
+
+```bash
+# 全部测试（模板系统 / 导出层 / 转换逻辑 / UI 冒烟 / 端到端）
+python3.12 -m unittest discover tests -v
 ```
 
 ### 打包为独立可执行文件
 
 ```bash
-pyinstaller "WPS增强工具.spec"
+# 注意：必须设置 PYINSTALLER_CONFIG_DIR（本机 ~/Library/Application Support/pyinstaller
+# 旧缓存被 macOS TCC 保护，不设置会报 PermissionError 打包失败）
+PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增强工具.spec" --noconfirm
 ```
 
-## 手机号导出功能说明
+产物：`dist/WPS增强工具.app`（macOS）/ `dist/WPS增强工具`（无 GUI 壳环境）。
 
-从源 Excel 文件中读取指定列（默认：`法定代表人` 和 `有效手机号`），将数据转换后写入新文件：
+### 验证打包产物
 
-- **手机号拆分**：按英文分号 `;` 分割多个手机号，每个手机号独占一行
-- **姓名合并**：同一姓名对应多个手机号时，姓名单元格跨行合并
-- **格式校验**：自动校验大陆手机号（11 位数字，1 开头，第二位 3-9），不合法手机号标记红色背景
-- **输出格式**：与源文件保持一致（xls→xls，xlsx→xlsx）
-- **输出模板**：25 列 WPS 通讯录导入模板
+1. 运行：`open "dist/WPS增强工具.app"`
+2. 查看日志确认功能模块加载成功（打包版日志在 `~/Library/Logs/WPS Enhancer/wps_enhancer_<日期>.log`）：
+   - ✅ 出现 `INFO | main | 应用启动`
+   - ✅ **没有** `WARNING | ui.main_window | 加载功能 ... 失败`（出现即说明打包漏了模块，检查 spec 的 `hiddenimports`）
+3. 源码版日志在项目 `logs/` 目录
 
-详细规格见 `features/phone_export/SPEC.md`。
+## Excel 批量导入通讯录功能说明
+
+从源表格文件（`.xls` / `.xlsx` / `.csv`）中读取数据，选择或创建**模板**（模板定义新表格的列结构，持久化于应用目录 `template/` 文件夹），系统按「模板列 + 内置列别名」自动匹配源表列并支持手动调整，生成新表格。
+
+- **模板系统**：模板 = 名称 + 列集合，每模板一个文件存于 `template/`，启动时自动加载展示
+- **内置列**：姓名 / 手机 / 公司名 / 网址，支持增删改查并持久化
+- **列映射**：自动匹配（精确列名 + 别名）+ 手动调整，未匹配列标黄提示
+- **手机号处理**：校验、标红、姓名合并可在全局设置中调整（默认：校验开、标红开、合并关）
+- **导出格式**：xlsx / xls / csv（编码可配置）/ vcf（vCard 3.0，字段可配置）/ txt（分隔符可配置）；默认导出格式为 **vcf**
+- **预览所见即所得**：xlsx/xls 表格预览；csv/txt/vcf 直接展示导出文件的真实文本内容（vcf 含姓名前后缀与时间戳效果）
+- **vcf 姓名自定义**：前缀（默认 `vcf_`）+ 后缀 + 「使用时间戳（年月日）」开关 + 时间戳位置（姓名前/姓名后），方便导入通讯录后按前缀批量管理
+- **全局设置**：主窗口设置入口，配置项对后续功能通用
+
+详细规格见 `features/contacts_import/SPEC.md`，模板系统设计见 `docs/template_system.md`。
 
 ## 项目结构
 
@@ -58,19 +81,27 @@ pyinstaller "WPS增强工具.spec"
 ├── core/                        # 公共基础设施
 │   ├── exceptions.py            # 全局异常定义
 │   ├── logger.py                # 统一日志模块
+│   ├── settings.py              # 全局设置（settings.json）读写入口
 │   ├── app_paths.py             # 应用路径工具
+│   ├── template/                # 模板系统（模型/存储/匹配/管理器）
 │   └── file_io/                 # 文件读写抽象层
 │       ├── base.py              # Reader/Writer 抽象接口
 │       ├── xlsx_handler.py      # xlsx 格式处理
-│       └── xls_handler.py       # xls 格式处理
+│       ├── xls_handler.py       # xls 格式处理
+│       ├── csv_handler.py       # csv 格式处理
+│       ├── vcf_handler.py       # vcf 格式写入
+│       └── txt_handler.py       # txt 格式写入
 ├── features/                    # 功能模块（每个功能一个子包）
-│   └── phone_export/            # 手机号导出
+│   └── contacts_import/         # Excel 批量导入通讯录
 │       ├── config.py            # 配置与数据结构
 │       ├── processor.py         # 纯业务逻辑（无 IO、无 UI）
 │       ├── panel.py             # UI 面板
 │       └── SPEC.md              # 功能规格文档
+├── docs/                        # 设计文档
+│   └── template_system.md       # 模板系统设计文档
+├── template/                    # 用户模板目录（运行时创建）
 └── ui/                          # 通用 UI 组件
-    ├── main_window.py           # 主窗口（自动发现并加载功能面板）
+    ├── main_window.py           # 主窗口（自动发现功能面板 + 设置入口）
     └── components/              # 可复用 UI 组件
 ```
 
@@ -101,7 +132,7 @@ pyinstaller "WPS增强工具.spec"
 - `panel.py` — UI 面板
 - `SPEC.md` — 功能规格
 
-无需修改 `main_window.py`。
+无需修改 `main_window.py`。需要"按模板生成表格"的新功能可直接复用 `core/template/`（见 `docs/template_system.md`）。
 
 ## 许可证
 

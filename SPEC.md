@@ -24,11 +24,13 @@
 |------|------|------|--------|
 | `.xlsx` | ✅ | ✅ | openpyxl 3.1.5 |
 | `.xls` | ✅ | ✅ | xlrd 2.0.2（读）/ xlwt 1.3.0（写） |
-| `.csv` | ❌ 不支持 | ❌ 不支持 | — |
-| `.et`（WPS 私有格式） | ❌ 不支持 | ❌ 不支持 | — |
-| `.ods` | ❌ 不支持 | ❌ 不支持 | — |
+| `.csv` | ✅ | ✅ | 标准库 csv（编码可配置） |
+| `.vcf` | ❌ | ✅ | 自实现 vCard 3.0 文本输出 |
+| `.txt` | ❌ | ✅ | 自实现文本输出（分隔符可配置） |
+| `.et`（WPS 私有格式） | ❌ | ❌ | — |
+| `.ods` | ❌ | ❌ | — |
 
-**输出格式规则**：输出文件格式必须与输入文件格式完全一致，禁止跨格式转换。
+**写入格式规则**：导出格式由用户在保存对话框中自由选择（扩展名决定），允许跨格式转换（区别于旧版"输出格式必须与输入一致"）。
 
 **xls 格式已知限制**：xlwt 1.3.0 最大支持 65,536 行 × 256 列。本项目数据规模上限 5,000 行，在安全范围内。xlwt 自 2019 年起停止维护，禁止在代码中寻找或引入替代库。
 
@@ -38,7 +40,7 @@
 
 ### 目录约定
 
-每个 WPS 增强功能对应 `features/` 下的一个独立子包，子包命名规则：全小写，下划线分隔（如 `phone_export`）。
+每个 WPS 增强功能对应 `features/` 下的一个独立子包，子包命名规则：全小写，下划线分隔（如 `contacts_import`）。
 
 ### 每个功能子包必须包含的文件
 
@@ -54,6 +56,10 @@
 
 `ui/main_window.py` 在启动时扫描 `features/` 目录下所有子包，读取 `__init__.py` 中的 `FEATURE_NAME` 和 `Panel`，自动将面板作为标签页加载到主窗口。**新增功能无需修改 `main_window.py`。**
 
+### 模板系统（公共基础设施）
+
+模板系统位于 `core/template/`，为所有功能提供统一的「模板持久化 + 列匹配」能力（设计文档：`docs/template_system.md`）。后续任何新功能需要"按模板生成表格"时，直接复用 `TemplateManager` 与 `matcher`，无需修改模板系统本身。
+
 ---
 
 ## 四、公共基础设施约定
@@ -61,9 +67,14 @@
 ### 文件 IO 抽象层
 
 - 路径：`core/file_io/`
-- `features/` 中的所有模块禁止直接 import openpyxl、xlrd 或 xlwt
+- `features/` 中的所有模块禁止直接 import openpyxl、xlrd 或 xlwt（csv 标准库除外，见 SPEC）
 - 所有文件读写必须通过 `core/file_io/base.py` 中定义的抽象接口进行
 - 此约定的目的：未来可在不修改功能代码的情况下替换底层 IO 库
+
+### 全局设置
+
+- 路径：`<应用目录>/settings.json`（内置列 + 应用设置，见 `docs/template_system.md` 第四节）
+- 读写入口：`core/settings.py`（新增），`features/` 禁止直接读写该文件
 
 ### 日志
 
@@ -83,7 +94,9 @@
 
 | 功能名 | 子包路径 | 状态 | 规格文档 |
 |--------|---------|------|---------|
-| 手机号导出 | `features/phone_export/` | MVP | `features/phone_export/SPEC.md` |
+| Excel 批量导入通讯录 | `features/contacts_import/` | 已实现 | `features/contacts_import/SPEC.md` |
+
+已移除：~~手机号导出~~（`features/phone_export/`，功能已被 `contacts_import` 取代）。
 
 ---
 
@@ -102,19 +115,23 @@ pyinstaller==6.21.0
 
 ---
 
-## 七、MVP 阶段固定内容
+## 七、固定内容与全局约束
 
-以下内容在 MVP 阶段固定不变，禁止在实现中开放或绕过：
+以下内容固定，禁止在实现中开放或绕过：
 
-- 列映射配置（`ColumnMapping` 的四个字段）不可在 UI 中修改，使用 `config.py` 默认值
-- 支持的文件格式固定为 `.xls` 和 `.xlsx`，不做扩展
+- 模板系统位于 `core/template/`，是唯一合法的模板存取入口
+- 全局设置文件为 `<应用目录>/settings.json`，读写只能通过 `core/settings.py`
+- 内置列默认四个：姓名（`name`）/ 手机（`phone`）/ 公司名（`company`）/ 网址（`website`），可增删改查并持久化
+- 列匹配 v1 仅支持完全相等匹配（模板列名 / 内置列别名），模糊匹配不实现
+- vcf 导出仅支持四个默认内置列字段
 
 ---
 
 ## 八、已知的后续扩展方向（不在当前实现范围）
 
-- 列映射在 UI 中开放配置
-- 更多 WPS 表格增强功能
+- 模糊列名匹配（包含 / 相似度 / 拼音）
+- vcf 支持自定义内置列字段
+- 更多 WPS 表格增强功能（复用模板系统）
 
 ---
 
@@ -129,5 +146,6 @@ pyinstaller==6.21.0
 | 修改任何 dataclass | `CLAUDE-detailed.md` + 对应 `features/<name>/SPEC.md` |
 | 修改编码规范或铁律 | `CLAUDE.md` + `CLAUDE-detailed.md` |
 | 修改业务逻辑 | 对应 `features/<name>/SPEC.md` |
-| 修改 MVP 固定值 | 对应 `features/<name>/SPEC.md` + `CLAUDE-detailed.md` |
+| 修改固定值/全局约束 | 对应 `features/<name>/SPEC.md` + `CLAUDE-detailed.md` + `docs/template_system.md` |
 | 修改依赖版本 | `SPEC.md`（依赖版本）+ `CLAUDE.md`（技术栈表）|
+| 修改模板系统设计 | `docs/template_system.md` + `CLAUDE-detailed.md` |

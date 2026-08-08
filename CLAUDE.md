@@ -1,7 +1,7 @@
 # WPS Enhancer — AI 工作指南
 
 ## 项目简介
-为 WPS 表格提供增强功能的跨平台桌面应用，当前功能：手机号导出（`phone_export`）。
+为 WPS 表格提供增强功能的跨平台桌面应用，当前功能：Excel 批量导入通讯录（`contacts_import`）。
 
 ## 技术栈（已锁定，禁止自行修改或引入新依赖）
 
@@ -19,20 +19,28 @@
 | 路径 | 职责（一句话） |
 |------|---------------|
 | `core/exceptions.py` | 全局统一异常定义，只定义不捕获 |
-| `core/logger.py` | 统一日志入口，所有模块通过此模块记录日志 |
+| `core/logger.py` | 统一日志入口 + AOP 日志装饰器（`log_call`），所有模块通过此模块记录日志 |
+| `core/settings.py` | 全局设置（settings.json）唯一读写入口 |
+| `core/template/` | 模板系统公共基础设施（模型/存储/匹配引擎/管理器） |
 | `core/file_io/base.py` | Reader/Writer 抽象接口，features/ 只能通过此层访问文件 |
 | `core/file_io/xlsx_handler.py` | xlsx 格式的 Reader/Writer 具体实现 |
 | `core/file_io/xls_handler.py` | xls 格式的 Reader/Writer 具体实现 |
-| `features/phone_export/` | 手机号导出功能完整子包 |
-| `ui/main_window.py` | 主窗口，负责扫描并加载各 feature 的 Panel |
-| `ui/components/` | 可复用 UI 组件 |
+| `core/file_io/csv_handler.py` | csv 格式的 Reader/Writer 具体实现 |
+| `core/file_io/vcf_handler.py` | vcf 格式的 Writer 具体实现 |
+| `core/file_io/txt_handler.py` | txt 格式的 Writer 具体实现 |
+| `features/contacts_import/` | Excel 批量导入通讯录功能完整子包（`panel.py` 流程编排 + `processor.py` 纯逻辑 + `ui/` 界面层拆分） |
+| `ui/main_window.py` | 主窗口，负责扫描并加载各 feature 的 Panel 与设置入口 |
+| `ui/components/` | 可复用 UI 组件（含全局设置界面） |
+| `docs/template_system.md` | 模板系统设计文档（权威） |
+| `template/` | 用户模板文件目录（运行时创建，文件名 = 模板名） |
 | `logs/` | 运行时日志目录（程序启动时自动创建） |
 
 ## 必读顺序（每次任务开始前）
 
 1. 本文件（CLAUDE.md）— 了解全局约定和禁令
 2. `CLAUDE-detailed.md` — 数据结构 + 接口签名 + 规范细节
-3. 对应功能的 `features/<功能名>/SPEC.md` — 所实现功能的完整规格
+3. `docs/template_system.md` — 模板系统设计（涉及模板/设置/匹配时必读）
+4. 对应功能的 `features/<功能名>/SPEC.md` — 所实现功能的完整规格
 
 ## 铁律（无例外，违反即为错误实现）
 
@@ -48,7 +56,7 @@
 
 - 在 `processor.py` 中读写文件或调用任何 UI 组件
 - 在 `file_io/` 中包含业务逻辑或数据转换
-- 在 `panel.py` 以外的文件中捕获自定义异常（`WpsEnhancerError` 及其子类）
+- 在 `panel.py` 以外的文件中捕获自定义异常（`WpsEnhancerError` 及其子类；唯一例外：`core/template/store.py` 的 `list_templates` 为容错跳过损坏模板而捕获 `FileReadError`，行为由 SPEC 定义）
 - 在 `features/` 中直接 import openpyxl、xlrd 或 xlwt
 - 新建未在 SPEC.md 中定义的 dataclass 或数据结构
 - 引入 requirements.txt 之外的任何第三方依赖
