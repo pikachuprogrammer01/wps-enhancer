@@ -30,6 +30,9 @@ jobs:
           # Gitee HTTPS 认证：用户名:私人令牌（Basic Auth，令牌当密码）。
           # 注意：oauth2:<token> 是 GitLab 写法，Gitee 官方文档不支持。
           git remote add gitee "https://pikachuprogrammer01:${GITEE_TOKEN}@gitee.com/pikachuprogrammer01/wps-enhancer.git"
-          # force-with-lease：Gitee 侧如有手工修改会拒绝推送（不覆盖他人改动）
+          # 先 fetch 建立 gitee/main 远程跟踪——--force-with-lease 在无跟踪
+          # 信息时必然拒绝（stale info），这是首次同步失败的根因
+          git fetch gitee main || echo "（Gitee 无 main 或首次连接，继续）"
+          # force-with-lease：以刚 fetch 的状态为基准，Gitee 侧如有更新会拒绝
           git push gitee main --force-with-lease
           echo "已同步到 Gitee：$(git rev-parse --short HEAD)"
