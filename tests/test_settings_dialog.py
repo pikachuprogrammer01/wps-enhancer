@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from ui.components import settings_dialog as sd
+from ui.components.settings import dialog as sd
 
 
 class SettingsDialogExtTest(unittest.TestCase):
@@ -44,7 +44,7 @@ class SettingsDialogExtTest(unittest.TestCase):
             # 收集时占位行被跳过、email 行被收集
             keys = [c.key for c in dlg._collect_builtin_columns()]
             self.assertIn("email", keys)
-            self.assertNotIn(sd.SettingsDialog._PLACEHOLDER_TEXT, keys)
+            self.assertNotIn("双击输入语义键", keys)
         finally:
             dlg.close()
 
@@ -83,7 +83,7 @@ class SettingsDialogExtTest(unittest.TestCase):
                         mock.patch.object(
                             QtWidgets.QFileDialog, "getSaveFileName",
                             return_value=(str(dest), ""),
-                        ), mock.patch.object(sd, "show_toast") as toast:
+                        ), mock.patch("ui.components.toast.show_toast") as toast:
                     dlg._on_export_logs()
                 self.assertEqual(dest.read_text(encoding="utf-8"), "test log")
                 self.assertEqual(toast.call_args[0][1], "日志已导出")
@@ -98,7 +98,7 @@ class SettingsDialogExtTest(unittest.TestCase):
             dlg = self._make_dialog()
             try:
                 with mock.patch("core.app_paths.get_logs_dir", return_value=log_dir), \
-                        mock.patch.object(sd, "show_toast") as toast, \
+                        mock.patch("ui.components.toast.show_toast") as toast, \
                         mock.patch.object(QtWidgets.QFileDialog, "getSaveFileName") as fd:
                     dlg._on_export_logs()
                 self.assertEqual(toast.call_args[0][1], "暂无日志文件")
@@ -121,7 +121,7 @@ class SettingsDialogExtTest(unittest.TestCase):
                         mock.patch.object(
                             QMessageBox, "question",
                             return_value=QMessageBox.StandardButton.Yes,
-                        ), mock.patch.object(sd, "show_toast") as toast:
+                        ), mock.patch("ui.components.toast.show_toast") as toast:
                     dlg._on_clear_logs()
                 self.assertEqual(f1.read_text(encoding="utf-8"), "")
                 self.assertEqual(f2.read_text(encoding="utf-8"), "")
@@ -153,8 +153,8 @@ class SettingsDialogExtTest(unittest.TestCase):
         dlg = self._make_dialog()
         try:
             dlg._vcf_prefix_edit.setText("changed-")
-            with mock.patch.object(sd, "show_toast") as toast, \
-                    mock.patch.object(sd, "save_app_settings"), \
+            with mock.patch("ui.components.toast.show_toast") as toast, \
+                    mock.patch("core.settings.save_app_settings"), \
                     mock.patch.object(dlg, "accept") as accept:
                 dlg._on_save()
             toast.assert_called_once()
@@ -167,8 +167,8 @@ class SettingsDialogExtTest(unittest.TestCase):
         """设置无变化时保存：不弹保存成功提示。"""
         dlg = self._make_dialog()
         try:
-            with mock.patch.object(sd, "show_toast") as toast, \
-                    mock.patch.object(sd, "save_app_settings"), \
+            with mock.patch("ui.components.toast.show_toast") as toast, \
+                    mock.patch("core.settings.save_app_settings"), \
                     mock.patch.object(dlg, "accept") as accept:
                 dlg._on_save()
             toast.assert_not_called()
@@ -184,7 +184,7 @@ class SettingsDialogExtTest(unittest.TestCase):
             with mock.patch.object(
                 QMessageBox, "question",
                 return_value=QMessageBox.StandardButton.No,
-            ), mock.patch.object(sd, "save_app_settings") as save, \
+            ), mock.patch("core.settings.save_app_settings") as save, \
                     mock.patch.object(dlg, "accept") as accept:
                 dlg._on_reset_defaults()
             save.assert_not_called()
@@ -193,8 +193,8 @@ class SettingsDialogExtTest(unittest.TestCase):
             with mock.patch.object(
                 QMessageBox, "question",
                 return_value=QMessageBox.StandardButton.Yes,
-            ), mock.patch.object(sd, "save_app_settings") as save, \
-                    mock.patch.object(sd, "show_toast") as toast, \
+            ), mock.patch("core.settings.save_app_settings") as save, \
+                    mock.patch("ui.components.toast.show_toast") as toast, \
                     mock.patch.object(dlg, "accept") as accept:
                 dlg._on_reset_defaults()
             save.assert_called_once()

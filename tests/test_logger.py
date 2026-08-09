@@ -91,7 +91,7 @@ class CleanupUiTest(unittest.TestCase):
 
     def test_cleanup_cancel_keeps_logs(self):
         from PyQt6.QtWidgets import QMessageBox
-        from ui.components import settings_dialog as sd
+        from ui.components.settings import dialog as sd
         dlg = sd.SettingsDialog()
         try:
             with mock.patch.object(
@@ -105,14 +105,14 @@ class CleanupUiTest(unittest.TestCase):
 
     def test_cleanup_confirm_toast(self):
         from PyQt6.QtWidgets import QMessageBox
-        from ui.components import settings_dialog as sd
+        from ui.components.settings import dialog as sd
         dlg = sd.SettingsDialog()
         try:
             with mock.patch.object(
                 QMessageBox, "question",
                 return_value=QMessageBox.StandardButton.Yes,
             ), mock.patch("core.logger.cleanup_logs", return_value=(3, 0)), \
-                    mock.patch.object(sd, "show_toast") as toast:
+                    mock.patch("ui.components.toast.show_toast") as toast:
                 dlg._on_cleanup_logs()
             self.assertEqual(toast.call_args[0][1], "已清理 3 个过期日志")
         finally:
@@ -120,14 +120,14 @@ class CleanupUiTest(unittest.TestCase):
 
     def test_cleanup_partial_failure_toast(self):
         from PyQt6.QtWidgets import QMessageBox
-        from ui.components import settings_dialog as sd
+        from ui.components.settings import dialog as sd
         dlg = sd.SettingsDialog()
         try:
             with mock.patch.object(
                 QMessageBox, "question",
                 return_value=QMessageBox.StandardButton.Yes,
             ), mock.patch("core.logger.cleanup_logs", return_value=(1, 2)), \
-                    mock.patch.object(sd, "show_toast") as toast:
+                    mock.patch("ui.components.toast.show_toast") as toast:
                 dlg._on_cleanup_logs()
             self.assertIn("2 个文件删除失败", toast.call_args[0][1])
             self.assertFalse(toast.call_args.kwargs["success"])  # 失败提示
@@ -137,3 +137,32 @@ class CleanupUiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CleanupRotatedTest(unittest.TestCase):
+    """轮转文件（.log.日期 后缀）也能被自动清理（glob 匹配回归）。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._log_dir = Path(self._tmp.name)
+        patcher = mock.patch("core.logger.get_logs_dir", return_value=self._log_dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_rotated_file_deleted_when_expired(self):
+        from core.logger import cleanup_logs
+        rotated = self._log_dir / "wps_enhancer_20260101.log.2026-01-02"
+        rotated.write_text("old", encoding="utf-8")
+        os.utime(rotated, (1, 1))  # 过期
+        deleted, failed = cleanup_logs(retain_days=30)
+        self.assertEqual((deleted, failed), (1, 0))
+        self.assertFalse(rotated.exists())
+
+    def test_rotated_file_kept_when_recent(self):
+        from core.logger import cleanup_logs
+        rotated = self._log_dir / "wps_enhancer_20260809.log.2026-08-09"
+        rotated.write_text("recent", encoding="utf-8")
+        deleted, failed = cleanup_logs(retain_days=30)
+        self.assertEqual(deleted, 0)
+        self.assertTrue(rotated.exists())

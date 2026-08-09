@@ -210,7 +210,16 @@ app 默认更新源为 **Gitee 镜像**（`https://gitee.com/pikachuprogrammer01
 ├── ui/                          # 通用 UI 组件
 │   ├── main_window.py           # 主窗口（功能发现 + 设置入口 + 启动自动更新检查）
 │   └── components/              # 可复用 UI 组件
-│       ├── settings_dialog.py   # 全局设置对话框（导入/导出/内置列/日志/更新）
+│       ├── settings_dialog.py   # 兼容层（re-export，历史导入路径）
+│       ├── settings/            # 设置对话框拆分包
+│       │   ├── dialog.py        # SettingsDialog 主类（组装 tabs + 保存/恢复默认）
+│       │   ├── tab_import.py    # 导入处理 tab（手机号/声明检测）
+│       │   ├── tab_export.py    # 导出格式 tab（编码/分隔符/vcf 字段与前后缀）
+│       │   ├── tab_builtin.py   # 内置列 tab（双击增删改查）
+│       │   ├── tab_log.py       # 日志 tab（导出/清空/保留天数自动清理）
+│       │   ├── tab_update.py    # 更新 tab（自动检查/更新源/目录配置）
+│       │   ├── tab_about.py     # 关于 tab（项目链接/问题反馈/卸载）
+│       │   └── constants.py     # 共享常量（编码/分隔符/字段标签）
 │       ├── file_picker.py       # 文件选择控件
 │       ├── status_bar.py        # 状态栏
 │       ├── template_edit_dialog.py # 模板列编辑对话框

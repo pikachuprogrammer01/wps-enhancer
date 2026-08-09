@@ -133,7 +133,7 @@ class UninstallUiTest(unittest.TestCase):
 
     def test_confirm_yes_runs_uninstall(self):
         from PyQt6.QtWidgets import QDialog, QMessageBox
-        from ui.components import settings_dialog as sd
+        from ui.components.settings import dialog as sd
         from ui.components.settings_dialog import SettingsDialog
         dlg = SettingsDialog()
         try:
@@ -144,7 +144,7 @@ class UninstallUiTest(unittest.TestCase):
                 return_value=QMessageBox.StandardButton.Yes,
             ), mock.patch(
                 "core.uninstall.uninstall_app", return_value=[("app", None)],
-            ) as un, mock.patch.object(sd, "show_toast") as toast:
+            ) as un, mock.patch("ui.components.toast.show_toast") as toast:
                 dlg._on_uninstall()
             un.assert_called_once()
             self.assertTrue(toast.called)
@@ -153,7 +153,7 @@ class UninstallUiTest(unittest.TestCase):
 
     def test_confirm_no_aborts(self):
         from PyQt6.QtWidgets import QDialog, QMessageBox
-        from ui.components import settings_dialog as sd
+        from ui.components.settings import dialog as sd
         from ui.components.settings_dialog import SettingsDialog
         dlg = SettingsDialog()
         try:

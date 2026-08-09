@@ -45,7 +45,10 @@ def main() -> None:
         except Exception as e:
             get_logger("main").warning(f"自动清理日志失败：{e}")
 
-    QTimer.singleShot(2000, _auto_clean_logs)
+    _cleanup_timer = QTimer()
+    _cleanup_timer.timeout.connect(_auto_clean_logs)
+    _cleanup_timer.start(24 * 3600 * 1000)  # 常驻期间每天清理一次
+    QTimer.singleShot(2000, _auto_clean_logs)  # 启动 2 秒后立即清理一次
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

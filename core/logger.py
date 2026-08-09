@@ -62,12 +62,15 @@ def cleanup_logs(retain_days: int = 30) -> Tuple[int, int]:
     """删除 retain_days 天前的过期日志文件，返回 (删除数, 失败数)。
 
     按文件修改时间判断；正在写入的当天日志 mtime 新，天然保留。
+    glob 用 *.log* 以覆盖 TimedRotatingFileHandler 午夜轮转文件
+    （wps_enhancer_20260809.log.2026-08-09——后缀 .log.日期 不被
+    *.log 匹配，旧写法会导致轮转日志永不被清理）。
     单个文件删除失败不中断（记录 warning），调用方按失败数提示。
     """
     cutoff = time.time() - retain_days * 86400
     deleted = 0
     failed = 0
-    for f in get_logs_dir().glob("wps_enhancer_*.log"):
+    for f in get_logs_dir().glob("wps_enhancer_*.log*"):
         try:
             if f.stat().st_mtime < cutoff:
                 f.unlink()
