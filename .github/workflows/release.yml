@@ -52,12 +52,49 @@ jobs:
           TAG="${{ inputs.tag_name || github.ref_name }}"
           gh release delete "$TAG" --yes 2>/dev/null || true
 
+      - name: Generate changelog body
+        # 从上一个 tag 到当前 tag 的 commit 自动生成 Release 描述（conventional commits 分节）
+        id: changelog
+        run: |
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          PREV=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || true)
+          if [ -n "$PREV" ]; then
+            RANGE="$PREV..$TAG"
+          else
+            RANGE="HEAD"  # 首个发布：取全部提交
+          fi
+          FEAT=$(git log "$RANGE" --pretty=format:"- %s" --grep="^feat" --no-merges || true)
+          FIX=$(git log "$RANGE" --pretty=format:"- %s" --grep="^fix" --no-merges || true)
+          OTHER=$(git log "$RANGE" --pretty=format:"- %s" --grep="^feat" --grep="^fix" --invert-grep --no-merges || true)
+          BODY=""
+          if [ -n "$FEAT" ]; then BODY="${BODY}## ✨ 新特性
+
+$FEAT
+
+"; fi
+          if [ -n "$FIX" ]; then BODY="${BODY}## 🐛 问题修复
+
+$FIX
+
+"; fi
+          if [ -n "$OTHER" ]; then BODY="${BODY}## 🔧 其他变更
+
+$OTHER
+"; fi
+          if [ -z "$BODY" ]; then BODY="无变更记录。"; fi
+          EOF=$(openssl rand -hex 16)
+          {
+            echo "body<<$EOF"
+            echo "$BODY"
+            echo "$EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish Release (macOS)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: dist/WPSEnhancer-macOS-*.zip
-          generate_release_notes: true
+          body: ${{ steps.changelog.outputs.body }}
 
   build-windows:
     # 串行依赖 macOS job：确保 Release 先由 macOS job 创建，Windows 只附加资产（避免并发竞态）
@@ -99,4 +136,3 @@ jobs:
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: dist/WPSEnhancer-Windows-*.zip
-          generate_release_notes: true
