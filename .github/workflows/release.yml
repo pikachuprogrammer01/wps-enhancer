@@ -110,6 +110,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 完整历史：update.json 的 notes 需计算上 tag..HEAD 的 changelog，
+          # 浅克隆下 git log 区间为空（v1.0.3 发布时 notes 为空的根因）
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
