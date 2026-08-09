@@ -82,13 +82,15 @@ jobs:
           else
             RANGE="HEAD"  # 首个发布：取全部提交
           fi
-          # 先取 %s → 过滤构建类 scope → 按标题去重（awk 保序）
-          FEAT=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" --no-merges | grep -vE "^feat\((ci|build|workflow|release)\)" | awk '!seen[$0]++ {print "- " $0}' || true)
-          FIX=$(git log "$RANGE" --pretty=format:"%s" --grep="^fix" --no-merges | grep -vE "^fix\((ci|build|workflow|release)\)" | awk '!seen[$0]++ {print "- " $0}' || true)
+          # 先取 %s → 仅按 subject 过滤（--grep 会匹配 message 全文，
+          # body 中含"feat 开头"的行会污染列表）→ 过滤构建类 scope → 按标题去重
+          FEAT=$(git log "$RANGE" --pretty=format:"%s" --no-merges | grep "^feat" | grep -vE "^feat\((ci|build|workflow|release)\)" | awk '!seen[$0]++ {print "- " $0}' || true)
+          FIX=$(git log "$RANGE" --pretty=format:"%s" --no-merges | grep "^fix" | grep -vE "^fix\((ci|build|workflow|release)\)" | awk '!seen[$0]++ {print "- " $0}' || true)
           BODY=""
           if [ -n "$FEAT" ]; then printf -v BODY '%s## ✨ 新特性\n\n%s\n\n' "$BODY" "$FEAT"; fi
           if [ -n "$FIX" ]; then printf -v BODY '%s## 🐛 问题修复\n\n%s\n\n' "$BODY" "$FIX"; fi
           if [ -z "$BODY" ]; then BODY="本次更新无用户可见变更。"; fi
+          echo "BODY_LEN=${#BODY}"  # 诊断输出（日志可查）
           EOF=$(openssl rand -hex 16)
           {
             echo "body<<$EOF"
