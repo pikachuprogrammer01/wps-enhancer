@@ -267,3 +267,38 @@ class ToastTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LogAutoCleanTest(unittest.TestCase):
+    """日志自动清理配置：设置默认值与收集。"""
+
+    @classmethod
+    def setUpClass(cls):
+        from PyQt6.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_settings_defaults(self):
+        from core.settings import AppSettings
+        s = AppSettings()
+        self.assertEqual(s.log_retain_days, 30)
+        self.assertTrue(s.log_auto_clean)
+
+    def test_retain_combo_initialized_from_settings(self):
+        from core.settings import AppSettings
+        from ui.components.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(settings=AppSettings(log_retain_days=60))
+        try:
+            self.assertEqual(dlg._retain_combo.currentData(), 60)
+        finally:
+            dlg.close()
+
+    def test_update_url_readonly(self):
+        from core.settings import AppSettings
+        from PyQt6.QtWidgets import QLineEdit
+        from ui.components.settings_dialog import SettingsDialog
+        dlg = SettingsDialog()
+        try:
+            self.assertTrue(dlg._update_url_edit.isReadOnly())
+            self.assertIsInstance(dlg._update_url_edit, QLineEdit)
+        finally:
+            dlg.close()

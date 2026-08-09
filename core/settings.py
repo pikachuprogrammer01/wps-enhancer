@@ -71,6 +71,8 @@ class AppSettings:
         default_factory=lambda: list(DEFAULT_DECLARATION_KEYWORDS),
     )
     log_debug: bool = False
+    log_retain_days: int = 30          # 日志保留天数（自动/手动清理过期日志）
+    log_auto_clean: bool = True       # 启动时自动清理过期日志
     auto_update_enabled: bool = True  # 启动时自动检查 GitHub Releases 更新
     use_system_proxy: bool = True     # 检查/下载更新时自动走系统代理（默认开启）
     update_url: str = "https://gitee.com/pikachuprogrammer01/wps-enhancer/raw/main/update.json"
@@ -104,6 +106,8 @@ def _settings_dict(settings: AppSettings) -> dict:
             "declaration_detect": settings.declaration_detect,
             "declaration_keywords": list(settings.declaration_keywords),
             "log_debug": settings.log_debug,
+            "log_retain_days": settings.log_retain_days,
+            "log_auto_clean": settings.log_auto_clean,
             "auto_update_enabled": settings.auto_update_enabled,
             "use_system_proxy": settings.use_system_proxy,
             "update_url": settings.update_url,
@@ -172,6 +176,8 @@ def _load_from_file(path: Path) -> AppSettings:
             str(k) for k in app.get("declaration_keywords", list(defaults.declaration_keywords))
         ],
         log_debug=bool(app.get("log_debug", defaults.log_debug)),
+        log_retain_days=int(app.get("log_retain_days", defaults.log_retain_days)),
+        log_auto_clean=bool(app.get("log_auto_clean", defaults.log_auto_clean)),
         auto_update_enabled=bool(app.get(
             "auto_update_enabled", defaults.auto_update_enabled,
         )),

@@ -28,6 +28,24 @@ def main() -> None:
     app = QApplication(sys.argv)
     from ui.theme import apply_global_theme
     apply_global_theme(app)
+    # 启动后延迟自动清理过期日志（按设置保留天数，静默失败不影响启动）
+    from PyQt6.QtCore import QTimer
+    from core.logger import cleanup_logs
+
+    def _auto_clean_logs() -> None:
+        try:
+            from core.settings import get_app_settings
+            settings = get_app_settings()
+            if settings.log_auto_clean:
+                deleted, failed = cleanup_logs(retain_days=settings.log_retain_days)
+                if deleted or failed:
+                    get_logger("main").info(
+                        f"自动清理日志：删除 {deleted} 个，失败 {failed} 个",
+                    )
+        except Exception as e:
+            get_logger("main").warning(f"自动清理日志失败：{e}")
+
+    QTimer.singleShot(2000, _auto_clean_logs)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QComboBox,
@@ -38,11 +38,11 @@ _ENCODING_LABELS = {
 class SettingsDialog(QDialog):
     """全局设置对话框（分页 Tab：导入处理 / 导出格式 / 内置列 / 日志）。"""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, settings: Optional[AppSettings] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("设置")
         self.setMinimumSize(640, 520)
-        self._settings = get_app_settings()
+        self._settings = settings if settings is not None else get_app_settings()
 
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
@@ -75,15 +75,15 @@ class SettingsDialog(QDialog):
         self._proxy_check.setChecked(self._settings.use_system_proxy)
         layout.addWidget(self._proxy_check)
         self._update_url_edit = QLineEdit(self._settings.update_url)
-        self._update_url_edit.setPlaceholderText(
-            "https://example.com/update.json（留空使用 GitHub Releases）",
+        self._update_url_edit.setReadOnly(True)  # 更新源内置，不允许手动修改
+        self._update_url_edit.setStyleSheet(
+            "background-color: #F3F4F6; color: #6B7280;",
         )
-        layout.addWidget(QLabel("自定义更新源（国内网络不稳定时使用）"))
+        layout.addWidget(QLabel("自定义更新源（内置，只读）"))
         layout.addWidget(self._update_url_edit)
         tip = QLabel(
-            "留空则从 GitHub Releases 检查更新；填写 update.json 地址后优先从"
-            "自定义源检查与下载（可托管到 Gitee/OSS 等国内可达地址，"
-            "格式见 README「自定义更新源」）。",
+            "app 默认从上方内置更新源检查更新（国内可达），不可修改；"
+            "检查失败自动回退 GitHub Releases。格式见 README「更新源说明」。",
         )
         tip.setWordWrap(True)
         tip.setStyleSheet("color: #888888; font-size: 11px;")
@@ -148,18 +148,48 @@ class SettingsDialog(QDialog):
             get_logger("ui.settings_dialog").warning(f"选择下载目录失败：{e}")
 
     def _build_about_tab(self) -> QWidget:
-        """关于：应用信息 + 卸载入口（P2 决策：卸载放关于 tab 底部）。"""
+        """关于：应用信息 + 项目链接 + 问题反馈 + 卸载入口。"""
         from core.version import APP_VERSION
         page = QWidget()
         layout = QVBoxLayout(page)
         group = QGroupBox("关于")
         gl = QVBoxLayout(group)
         gl.addWidget(QLabel(f"WPS 增强工具  v{APP_VERSION}"))
-        gl.addWidget(QLabel(
-            "Excel 批量导入通讯录等增强功能的跨平台桌面工具。\n"
-            "问题反馈与更新说明见项目 README。",
-        ))
+        intro = QLabel(
+            "为 WPS 表格提供增强功能的跨平台桌面工具，当前支持"
+            "「Excel 批量导入通讯录」：多格式导入（xlsx/xls/csv）、"
+            "列映射与模板、导出 xlsx/csv/txt/vcf 通讯录。",
+        )
+        intro.setWordWrap(True)
+        gl.addWidget(intro)
+        repo_link = QLabel(
+            '<a href="https://github.com/pikachuprogrammer01/wps-enhancer">'
+            "GitHub 项目主页</a>",
+        )
+        repo_link.setOpenExternalLinks(True)
+        gl.addWidget(repo_link)
         layout.addWidget(group)
+
+        feedback_group = QGroupBox("问题反馈")
+        fl = QVBoxLayout(feedback_group)
+        issue_link = QLabel(
+            '<a href="https://github.com/pikachuprogrammer01/wps-enhancer/issues/new">'
+            "前往 GitHub Issues 提交问题</a>",
+        )
+        issue_link.setOpenExternalLinks(True)
+        fl.addWidget(issue_link)
+        guide = QLabel(
+            "提 issue 的建议写法：\n"
+            "1. 标题：一句话描述问题（如「导出 vcf 崩溃」）\n"
+            "2. 正文：复现步骤（做了什么 → 期望结果 → 实际结果）\n"
+            "3. 附上日志：设置 → 日志 → 「导出日志文件」，把日志内容贴进 issue\n"
+            "4. 附截图或源文件样例（去掉敏感信息）会更快定位\n"
+            "5. 说明操作系统版本（macOS / Windows）",
+        )
+        guide.setWordWrap(True)
+        guide.setStyleSheet("color: #555555; font-size: 11px;")
+        fl.addWidget(guide)
+        layout.addWidget(feedback_group)
         layout.addStretch(1)
         uninstall_group = QGroupBox("卸载")
         ul = QVBoxLayout(uninstall_group)
@@ -460,13 +490,19 @@ class SettingsDialog(QDialog):
         self._retain_combo = QComboBox()
         for days in (15, 30, 60, 90, 365):
             self._retain_combo.addItem(f"{days} 天", days)
-        self._retain_combo.setCurrentIndex(1)  # 默认 30 天
+        idx = self._retain_combo.findData(self._settings.log_retain_days)
+        self._retain_combo.setCurrentIndex(idx if idx >= 0 else 1)
         cleanup_row.addWidget(self._retain_combo)
         cleanup_btn = QPushButton("清理过期日志")
         cleanup_btn.clicked.connect(self._on_cleanup_logs)
         cleanup_row.addWidget(cleanup_btn)
         cleanup_row.addStretch()
         layout.addLayout(cleanup_row)
+        self._auto_clean_check = QCheckBox(
+            "启动时自动清理过期日志（按上面保留天数）",
+        )
+        self._auto_clean_check.setChecked(self._settings.log_auto_clean)
+        layout.addWidget(self._auto_clean_check)
         return group
 
     def _on_cleanup_logs(self) -> None:
@@ -758,6 +794,8 @@ class SettingsDialog(QDialog):
                 if k.strip()
             ],
             log_debug=self._log_debug_check.isChecked(),
+            log_retain_days=self._retain_combo.currentData(),
+            log_auto_clean=self._auto_clean_check.isChecked(),
             auto_update_enabled=self._auto_update_check.isChecked(),
             use_system_proxy=self._proxy_check.isChecked(),
             update_url=self._update_url_edit.text().strip(),
