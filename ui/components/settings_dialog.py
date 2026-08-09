@@ -96,6 +96,14 @@ class SettingsDialog(QDialog):
         browse_btn.clicked.connect(self._on_browse_download_dir)
         dir_row.addWidget(browse_btn)
         layout.addLayout(dir_row)
+        install_row = QHBoxLayout()
+        self._install_dir_edit = QLineEdit(self._settings.install_dir)
+        install_row.addWidget(QLabel("应用安装目录"))
+        install_row.addWidget(self._install_dir_edit, 1)
+        browse_install_btn = QPushButton("浏览…")
+        browse_install_btn.clicked.connect(self._on_browse_install_dir)
+        install_row.addWidget(browse_install_btn)
+        layout.addLayout(install_row)
         row = QHBoxLayout()
         row.addWidget(QLabel(f"当前版本：v{APP_VERSION}"))
         row.addStretch()
@@ -235,6 +243,19 @@ class SettingsDialog(QDialog):
                 self.parent() or self,
                 "卸载完成，建议重启电脑后检查",
             )
+
+    def _on_browse_install_dir(self) -> None:
+        """浏览选择应用安装目录（异常静默兜底，不影响设置流程）。"""
+        try:
+            from PyQt6.QtWidgets import QFileDialog
+            start = self._install_dir_edit.text().strip() or str(Path.home())
+            path = QFileDialog.getExistingDirectory(
+                self, "选择应用安装目录", start,
+            )
+            if path:
+                self._install_dir_edit.setText(path)
+        except Exception as e:
+            get_logger("ui.settings_dialog").warning(f"选择安装目录失败：{e}")
 
     def _build_import_tab(self) -> QWidget:
         """导入处理：手机号处理 + 文件处理（声明检测）。"""
@@ -741,6 +762,7 @@ class SettingsDialog(QDialog):
             use_system_proxy=self._proxy_check.isChecked(),
             update_url=self._update_url_edit.text().strip(),
             download_dir=self._download_dir_edit.text().strip(),
+            install_dir=self._install_dir_edit.text().strip(),
         )
         return settings
 

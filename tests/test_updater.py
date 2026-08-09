@@ -594,3 +594,32 @@ class ZipIntegrityTest(unittest.TestCase):
             with self.assertRaises(UpdaterError) as ctx:
                 verify_zip_integrity(path)
         self.assertIn("损坏", str(ctx.exception))
+
+
+class InstallGuideTest(unittest.TestCase):
+    """安装指引：目录从设置生成（不写死）。"""
+
+    def test_guide_uses_settings_install_dir(self):
+        from unittest import mock as _mock
+        from core.settings import AppSettings
+        from ui.components import update_flow as uf
+        fake = AppSettings(install_dir="/自定义/安装目录")
+        with _mock.patch("core.settings.get_app_settings", return_value=fake):
+            guide = uf._replace_guide()
+        self.assertIn("/自定义/安装目录", guide)
+
+    def test_guide_fallback_default(self):
+        from unittest import mock as _mock
+        from ui.components import update_flow as uf
+        with _mock.patch(
+            "core.settings.get_app_settings",
+            side_effect=Exception("settings broken"),
+        ):
+            guide = uf._replace_guide()
+        self.assertIn("替换方法", guide)
+
+    def test_install_dir_setting_default(self):
+        from core.settings import AppSettings
+        s = AppSettings()
+        self.assertTrue(s.install_dir)  # 平台默认非空
+        self.assertTrue(s.download_dir)

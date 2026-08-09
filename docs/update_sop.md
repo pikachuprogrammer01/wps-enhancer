@@ -97,12 +97,12 @@ class UninstallItem:
 
 ## 3. 配置化总览（"后续更改下载/安装地址"）
 
-新增三个设置项（`AppSettings`），全部有 UI：
+新增设置项（`AppSettings`），全部有 UI：
 
 | 设置项 | 默认值（macOS / Windows） | 影响 |
 |--------|--------------------------|------|
 | `download_dir` | `~/Downloads` / `%USERPROFILE%\Downloads` | 更新包保存位置 |
-| `install_dir` | `/Applications` / `%LOCALAPPDATA%\WPSEnhancer` | 安装/替换指引中的目标目录 |
+| `install_dir` | `/Applications` / `%LOCALAPPDATA%\WPSEnhancer`（设置可改） | 安装/替换指引中的目标目录 + 「打开安装目录」按钮 |
 | `update_url` | Gitee raw（已有） | 检查/下载源 |
 
 > 地址全部配置驱动：改地址 = 改设置，不改代码；升级兼容（旧 settings.json 缺字段走默认值，已有模式）。
@@ -115,7 +115,7 @@ class UninstallItem:
 |----|------|--------|
 | **P1** | 下载阶段：`download_dir` 配置化 + zip 完整性校验（中档）+ 「打开所在文件夹」按钮 | 设置项 + 校验 + UI 按钮 |
 | **P2** | 卸载功能：`UninstallItem` 框架 + 卸载入口（设置 → 关于）+ 四项清理 + 二次确认 | ✅ 已完成（commit fffc814 后一版） |
-| **P3** | 安装阶段：`install_dir` 配置化 + 指引文案从配置生成 + 「打开安装目录」按钮 | 安装指引与地址解耦 |
+| **P3** | 安装阶段：`install_dir` 配置化 + 指引文案从配置生成 + 「打开安装目录」按钮 | ✅ 已完成 |
 
 ---
 
@@ -128,4 +128,5 @@ class UninstallItem:
 | 校验强度默认值 | **中档**（zipfile 完整解压校验）；重档（sha256）作为自定义源扩展，update.json 可带 `sha256` 字段 |
 | P1 实施 | **全部实施**（下载目录配置化 + zip 完整性校验 + 打开所在文件夹按钮） |
 | P2 实施 | **全部实施**（UninstallItem 框架 + 关于 tab 卸载入口 + 四项清理 + 二次确认 + 单项失败不中断） |
+| P3 实施 | **全部实施**（install_dir 配置化 + 指引文案从配置生成 + 打开安装目录按钮） |
 

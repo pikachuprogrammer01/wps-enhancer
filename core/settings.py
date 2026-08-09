@@ -38,6 +38,16 @@ def _default_download_dir() -> str:
     return str(Path.home() / "Downloads")
 
 
+def _default_install_dir() -> str:
+    """按平台返回默认安装目录（macOS /Applications，Windows 用户目录）。"""
+    import sys
+    if sys.platform == "win32":
+        import os
+        local = os.environ.get("LOCALAPPDATA", str(Path.home()))
+        return str(Path(local) / "WPSEnhancer")
+    return "/Applications"
+
+
 @dataclass
 class AppSettings:
     """全局设置（settings.json 的权威结构）。"""
@@ -67,6 +77,8 @@ class AppSettings:
     # 自定义更新源（update.json 地址，留空用 GitHub；默认 Gitee 镜像，国内可达）
     download_dir: str = field(default_factory=_default_download_dir)
     # 更新包下载目录（设置可改；默认 macOS ~/Downloads / Windows 下载目录）
+    install_dir: str = field(default_factory=_default_install_dir)
+    # 应用安装目录（设置可改；macOS /Applications / Windows %LOCALAPPDATA%\WPSEnhancer）
 
 
 _cache: Optional[AppSettings] = None
@@ -96,6 +108,7 @@ def _settings_dict(settings: AppSettings) -> dict:
             "use_system_proxy": settings.use_system_proxy,
             "update_url": settings.update_url,
             "download_dir": settings.download_dir,
+            "install_dir": settings.install_dir,
         },
     }
 
@@ -167,6 +180,7 @@ def _load_from_file(path: Path) -> AppSettings:
         )),
         update_url=str(app.get("update_url", defaults.update_url)),
         download_dir=str(app.get("download_dir", defaults.download_dir)),
+        install_dir=str(app.get("install_dir", defaults.install_dir)),
     )
 
 

@@ -22,21 +22,41 @@ from core.version import APP_VERSION
 _REPLACE_GUIDE_MAC = (
     "替换方法：\n"
     "1. 完全退出 WPS 增强工具\n"
-    "2. 解压 zip，把新的 WPS增强工具.app 拖到「应用程序」覆盖旧版\n"
+    "2. 解压 zip，把新的 WPS增强工具.app 拖到「{install_dir}」覆盖旧版\n"
     "3. 若提示「无法验证开发者」，请右键点按 App → 打开\n"
 )
 _REPLACE_GUIDE_WIN = (
     "替换方法：\n"
     "1. 完全退出 WPS 增强工具\n"
-    "2. 解压 zip，用其中的文件覆盖安装目录（默认 C:\\Program Files\\WPSEnhancer 或你解压的位置）\n"
+    "2. 解压 zip，用其中的文件覆盖安装目录（{install_dir}）\n"
     "3. 若出现 SmartScreen 提示，点「更多信息」→「仍要运行」\n"
 )
 
 
 def _replace_guide() -> str:
-    """按当前平台返回更新包替换指引。"""
+    """按当前平台返回更新包替换指引（安装目录从设置读取，不写死）。"""
+    install_dir = _resolve_install_dir()
     import sys
-    return _REPLACE_GUIDE_WIN if sys.platform == "win32" else _REPLACE_GUIDE_MAC
+    template = _REPLACE_GUIDE_WIN if sys.platform == "win32" else _REPLACE_GUIDE_MAC
+    return template.format(install_dir=install_dir)
+
+
+def _resolve_install_dir() -> str:
+    """返回应用安装目录（设置可改，默认按平台）。"""
+    try:
+        from core.settings import get_app_settings
+        raw = get_app_settings().install_dir
+        if raw.strip():
+            return raw.strip()
+    except Exception:
+        pass
+    import sys
+    if sys.platform == "win32":
+        import os
+        return os.path.join(
+            os.environ.get("LOCALAPPDATA", str(Path.home())), "WPSEnhancer",
+        )
+    return "/Applications"
 
 
 def check_update_now(parent: QWidget, silent_on_failure: bool,
@@ -188,7 +208,24 @@ def _handle_download_done(parent: QWidget, result: tuple) -> None:
     box.setIcon(QMessageBox.Icon.Information)
     box.setText(f"更新包已保存到：\n{payload}\n\n{_replace_guide()}")
     box.addButton("打开所在文件夹", QMessageBox.ButtonRole.ActionRole)
+    box.addButton("打开安装目录", QMessageBox.ButtonRole.ActionRole)
     box.addButton(QMessageBox.StandardButton.Ok)
     box.exec()
     if box.buttonRole(box.clickedButton()) == QMessageBox.ButtonRole.ActionRole:
-        _reveal_in_finder(payload)
+        if box.clickedButton().text() == "打开安装目录":
+            _reveal_dir(_resolve_install_dir())
+        else:
+            _reveal_in_finder(payload)
+
+
+def _reveal_dir(path: str) -> None:
+    """在系统文件管理器中打开目录（macOS Finder / Windows 资源管理器）。"""
+    import subprocess
+    import sys
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", path])
+        else:
+            subprocess.Popen(["open", path])
+    except OSError:
+        pass  # 打不开文件管理器不影响主流程，静默
