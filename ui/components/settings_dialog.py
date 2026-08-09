@@ -83,7 +83,7 @@ class SettingsDialog(QDialog):
         """手动检查更新（后台检查，结果弹窗；完成后复位状态文本）。"""
         from ui.components.update_flow import check_update_now
         self._check_update_btn.setEnabled(False)
-        self._update_status_label.setText("正在检查更新…")
+        self._update_status_label.setText("正在检查更新…（最多约 5 秒）")
 
         def _reset_status() -> None:
             # 检查完成（无论成功失败）：复位按钮与状态文本

@@ -23,7 +23,7 @@ from core.logger import log_call
 # GitHub 仓库（公开仓库无需 token）
 REPO = "pikachuprogrammer01/wps-enhancer"
 _UA = "wps-enhancer-updater/1.0"
-_DEFAULT_TIMEOUT = 10
+_DEFAULT_TIMEOUT = 5
 
 
 class UpdaterError(WpsEnhancerError):
