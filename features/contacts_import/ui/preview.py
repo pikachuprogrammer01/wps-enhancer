@@ -103,9 +103,13 @@ class PreviewMixin:
         self._preview_text.setPlainText(text.rstrip("\n"))
 
     def _setup_preview_table(self, headers: List[str]) -> None:
-        """按导出格式设置预览表格列。"""
+        """按导出格式设置预览表格列（Stretch：内容多的列分配更多空间）。"""
+        from PyQt6.QtWidgets import QHeaderView
         self._preview_table.setColumnCount(len(headers))
         self._preview_table.setHorizontalHeaderLabels(headers)
+        self._preview_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch,
+        )
 
     def _update_preview_header(self, total: int) -> None:
         """更新预览顶部汇总与警告横幅（vcf 时显示当前生效的姓名前缀）。"""

@@ -128,7 +128,17 @@ class ContactsPanelUI:
         self._template_table.setColumnWidth(1, 260)
         self._template_table.setColumnWidth(2, 240)
         self._template_table.verticalHeader().setVisible(False)
-        self._template_table.horizontalHeader().setStretchLastSection(True)
+        # 列宽分配：模板列（内容多）Stretch 吃剩余空间，名称/操作列固定
+        from PyQt6.QtWidgets import QHeaderView
+        self._template_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Fixed,
+        )
+        self._template_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch,
+        )
+        self._template_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Fixed,
+        )
         layout.addWidget(self._template_table)
 
         # 当前模板摘要（列名 + 实际映射数）
@@ -161,15 +171,28 @@ class ContactsPanelUI:
             QAbstractItemView.DragDropMode.InternalMove,
         )
         self._mapping_table.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self._mapping_table.horizontalHeader().setStretchLastSection(True)
+        # 列宽分配：示例列（内容多）Stretch 吃剩余空间，其余固定
+        from PyQt6.QtWidgets import QHeaderView
+        for col, width in ((0, 150), (1, 110), (2, 140), (4, 110)):
+            self._mapping_table.setColumnWidth(col, width)
+            self._mapping_table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeMode.Fixed,
+            )
+        self._mapping_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch,
+        )
         layout.addWidget(self._mapping_table)
         return group
 
     def _build_source_group(self) -> QGroupBox:
         """构建源表内容预览 GroupBox（原表表头 + 前 10 行数据）。"""
+        from PyQt6.QtWidgets import QHeaderView
         group = QGroupBox("源表内容（前 10 行，选中的源列高亮显示）")
         layout = QVBoxLayout(group)
         self._source_table = QTableWidget()
+        self._source_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch,
+        )
         layout.addWidget(self._source_table)
         return group
 

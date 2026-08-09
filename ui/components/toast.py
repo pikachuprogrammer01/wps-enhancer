@@ -15,9 +15,9 @@ def show_toast(parent: QWidget, text: str,
                success: bool = True, duration_ms: int = 2500) -> None:
     """在 parent 顶部居中显示轻提示，自动淡出销毁（不阻塞、不挡点击）。
 
-    成功绿色点 / 失败橙色点前缀，深色半透明圆角气泡（element-plus 风格）。
+    成功绿色点 / 失败红色点前缀，深色半透明圆角气泡（element-plus 风格）。
     """
-    dot_color = "#34D399" if success else "#F59E0B"
+    dot_color = "#34D399" if success else "#EF4444"
     toast = QLabel(f'<span style="color:{dot_color};">●</span>　{text}', parent)
     toast.setStyleSheet(
         "background-color: rgba(31, 41, 55, 0.92); color: #FFFFFF;"

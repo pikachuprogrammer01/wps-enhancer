@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QHeaderView
 
 from core.settings import (
     AppSettings, ENCODING_CHOICES, SEPARATOR_CHOICES, get_app_settings,
@@ -408,7 +409,16 @@ class SettingsDialog(QDialog):
         self._builtin_table.setColumnWidth(0, 160)
         self._builtin_table.setColumnWidth(1, 120)
         self._builtin_table.verticalHeader().setVisible(False)
-        self._builtin_table.horizontalHeader().setStretchLastSection(True)
+        # 列宽分配：匹配别名（内容多）Stretch 吃剩余空间，语义键/显示名固定
+        self._builtin_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Fixed,
+        )
+        self._builtin_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Fixed,
+        )
+        self._builtin_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch,
+        )
         self._builtin_table.itemChanged.connect(self._on_builtin_item_changed)
         for col in self._settings.builtin_columns:
             self._append_builtin_row(col)
