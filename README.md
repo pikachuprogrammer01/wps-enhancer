@@ -90,7 +90,15 @@ app 默认更新源为 **Gitee 镜像**（`https://gitee.com/pikachuprogrammer01
 **Gitee 镜像配置（一次性，网页操作）**：
 
 1. Gitee 新建仓库 → 选择「从 GitHub 导入」（Gitee 设置 → 账号绑定中先绑定 GitHub）→ 导入 `wps-enhancer`
-2. 仓库 → 「管理」 → 「镜像仓库」 → 添加 GitHub 源：`https://github.com/pikachuprogrammer01/wps-enhancer.git`（分支 `main`）→ 保存；同步频率选「每天」，发布当天手动点「立即同步」
+2. 仓库 → 「管理」 → 「镜像仓库」 → 添加 GitHub 源：`https://github.com/pikachuprogrammer01/wps-enhancer.git`（分支 `main`）→ 保存；同步频率选「每天」（作为兜底，正常走 CI 自动同步）
+
+**全自动同步（推荐，秒级）**：仓库已内置 workflow（`.github/workflows/sync-gitee.yml`），**每次 push main 自动推送到 Gitee**，无需手动点同步。启用只需一次性配置 token：
+
+1. **Gitee 生成私人令牌**：Gitee 头像 → 设置 → 安全设置 → 私人令牌 → 生成新令牌（勾选 `projects` 权限）→ 复制
+2. **GitHub 添加 Secret**：仓库 Settings → Secrets and variables → Actions → New repository secret → 名称填 `GITEE_TOKEN`，值粘贴令牌
+3. 下次 push 即自动同步；未配置 token 时 workflow 会跳过并提示（不影响其他流程）
+
+> `--force-with-lease` 保护：Gitee 侧若有手工修改会拒绝推送，不会覆盖你的改动。
 
 **update.json 格式**（CI 自动生成，一般无需手改）：
 
