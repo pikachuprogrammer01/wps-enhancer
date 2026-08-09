@@ -148,7 +148,8 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(panel._template.name, "（默认映射：内置列）")
         self.assertEqual(len(panel._matches), 4)
         self.assertFalse(panel._preview_group.isHidden())
-        self.assertTrue(panel._export_btn.isEnabled())
+        # 自动默认映射后停在第二步：导出按钮必须禁用（仅第三步可导出）
+        self.assertFalse(panel._export_btn.isEnabled())
         panel.close()
 
     def test_mapping_table_has_example_column(self):
@@ -236,6 +237,7 @@ class UiSmokeTest(unittest.TestCase):
         ):
             panel._reload_templates()
             panel._auto_template_decision(panel._sheet_data.headers)
+        panel._goto_step(2)  # 进入第三步：导出按钮才开放
         panel._format_combo.setCurrentText("vcf")
         out_dir = Path(tempfile.mkdtemp(prefix="wps_out_"))
 
@@ -551,7 +553,7 @@ class UiSmokeTest(unittest.TestCase):
         from features.contacts_import.panel import ContactsImportPanel
 
         panel = ContactsImportPanel()
-        bad = Path(tempfile.mkdtemp(prefix="wps_bad_")) / "数据.txt"
+        bad = Path(tempfile.mkdtemp(prefix="wps_bad_")) / "数据.docx"
         bad.write_text("x", encoding="utf-8")
         with mock.patch(
             "features.contacts_import.ui.base.QMessageBox.warning",
@@ -594,6 +596,321 @@ class UiSmokeTest(unittest.TestCase):
         self.assertIsNone(panel._template)  # 未应用
         self.assertEqual(panel._template_summary.text(), "")
         panel.close()
+
+    def test_apply_template_warns_unmapped_columns(self):
+        """应用模板存在未映射列：warning 提示并强制停留在列映射（第二步）。"""
+        import tempfile
+        from unittest import mock
+        from core.file_io.base import SheetData
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+        from features.contacts_import.panel import ContactsImportPanel
+
+        panel = ContactsImportPanel()
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_unmapped_"))
+        manager = TemplateManager(tpl_dir, [])
+        # 模板两列：姓名（可匹配）+ 备注（源表没有）
+        manager.create(
+            "带备注模板",
+            [
+                TemplateColumn(key="name", name="姓名"),
+                TemplateColumn(key="custom_1", name="备注"),
+            ],
+            source_format="text",
+        )
+        panel._file_path = "/tmp/data.csv"
+        panel._sheet_data = SheetData(
+            sheet_name="s", headers=["姓名", "手机号"],
+            rows=[{"姓名": "张三", "手机号": "138"}],
+        )
+        with mock.patch(
+            "features.contacts_import.panel.get_templates_dir",
+            return_value=tpl_dir,
+        ), mock.patch(
+            "features.contacts_import.ui.base.QMessageBox.warning",
+        ) as warn_mock:
+            panel._apply_template_by_name("带备注模板")
+        warn_mock.assert_called_once()  # 明确提示
+        self.assertIn("备注", warn_mock.call_args[0][2])
+        # 强制停留在列映射（第二步），不跳预览
+        self.assertEqual(panel._stack.currentIndex(), 1)
+        panel.close()
+
+    def test_apply_template_all_mapped_skips_prompt(self):
+        """模板全部列可匹配：应用模板不弹提示直接进预览。"""
+        import tempfile
+        from unittest import mock
+        from core.file_io.base import SheetData
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+        from features.contacts_import.panel import ContactsImportPanel
+
+        panel = ContactsImportPanel()
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_allmap_"))
+        manager = TemplateManager(tpl_dir, [])
+        manager.create(
+            "全匹配模板",
+            [TemplateColumn(key="name", name="姓名")],
+            source_format="text",
+        )
+        panel._file_path = "/tmp/data.csv"
+        panel._sheet_data = SheetData(
+            sheet_name="s", headers=["姓名", "手机号"],
+            rows=[{"姓名": "张三", "手机号": "138"}],
+        )
+        with mock.patch(
+            "features.contacts_import.panel.get_templates_dir",
+            return_value=tpl_dir,
+        ), mock.patch(
+            "features.contacts_import.ui.base.QMessageBox.question",
+        ) as q_mock:
+            panel._apply_template_by_name("全匹配模板")
+        q_mock.assert_not_called()
+        self.assertEqual(panel._stack.currentIndex(), 2)  # 直接进预览
+        panel.close()
+
+    def test_template_apply_button_enabled_by_matchability(self):
+        """「应用」按钮仅当模板与当前源文件可映射时启用。"""
+        import tempfile
+        from unittest import mock
+        from PyQt6.QtWidgets import QPushButton
+        from core.file_io.base import SheetData
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+        from features.contacts_import.panel import ContactsImportPanel
+
+        def apply_btn_of(panel, row: int) -> QPushButton:
+            ops = panel._template_table.cellWidget(row, 2)
+            return next(
+                b for b in ops.findChildren(QPushButton) if b.text() == "应用"
+            )
+
+        panel = ContactsImportPanel()
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_abtn_"))
+        manager = TemplateManager(tpl_dir, [])
+        manager.create(
+            "可匹配模板", [TemplateColumn(key="name", name="姓名")],
+            source_format="text",
+        )
+        manager.create(
+            "格式不同模板", [TemplateColumn(key="name", name="姓名")],
+            source_format="excel",
+        )
+        try:
+            # 无源文件 → 全部禁用
+            with mock.patch(
+                "features.contacts_import.panel.get_templates_dir",
+                return_value=tpl_dir,
+            ):
+                panel._reload_templates()
+            self.assertFalse(apply_btn_of(panel, 1).isEnabled())
+            self.assertFalse(apply_btn_of(panel, 2).isEnabled())
+            # 默认映射行始终可用
+            self.assertTrue(apply_btn_of(panel, 0).isEnabled())
+
+            # csv 源 + text 模板可匹配 → 启用；excel 模板跨格式 → 禁用
+            panel._file_path = "/tmp/data.csv"
+            panel._sheet_data = SheetData(
+                sheet_name="s", headers=["姓名", "手机号"],
+                rows=[{"姓名": "张三", "手机号": "138"}],
+            )
+            with mock.patch(
+                "features.contacts_import.panel.get_templates_dir",
+                return_value=tpl_dir,
+            ):
+                panel._reload_templates()
+            self.assertTrue(apply_btn_of(panel, 1).isEnabled())
+            self.assertFalse(apply_btn_of(panel, 2).isEnabled())
+        finally:
+            panel.close()
+
+    def test_template_matches_requires_real_source_column(self):
+        """可匹配判定：manual 建议映射指向的列必须真实存在于当前表头。"""
+        import tempfile
+        from unittest import mock
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+        from features.contacts_import.panel import ContactsImportPanel
+
+        panel = ContactsImportPanel()
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_real_"))
+        manager = TemplateManager(tpl_dir, [])
+        # 模板映射保存的是「有效手机号」，当前表头只有「姓名」「手机号」
+        manager.create(
+            "建议列不存在的模板",
+            [TemplateColumn(key="phone", name="手机号")],
+            mappings={"phone": "有效手机号"},
+            source_format="text",
+        )
+        headers = ["姓名", "手机号"]
+        try:
+            panel._file_path = "/tmp/data.csv"
+            self.assertFalse(
+                panel._template_matches_headers(
+                    manager.list_templates()[0], headers,
+                ),
+                "建议映射指向不存在的列 → 不可匹配（修复点：一个映射都没有不能点应用）",
+            )
+            # 建议映射真实存在 → 可匹配
+            manager.create(
+                "建议列存在的模板",
+                [TemplateColumn(key="phone", name="手机号")],
+                mappings={"phone": "手机号"},
+                source_format="text",
+            )
+            exists_tpl = next(
+                t for t in manager.list_templates()
+                if t.name == "建议列存在的模板"
+            )
+            self.assertTrue(
+                panel._template_matches_headers(exists_tpl, headers),
+            )
+        finally:
+            panel.close()
+
+    def test_mapping_source_combo_no_empty_items(self):
+        """列映射源列下拉：无空项；未映射时下拉保持空白（不误选第一项）。"""
+        import tempfile
+        from unittest import mock
+        from PyQt6.QtWidgets import QComboBox
+        from core.file_io.base import SheetData
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+        from features.contacts_import.panel import ContactsImportPanel
+
+        panel = ContactsImportPanel()
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_combo_"))
+        TemplateManager(tpl_dir, []).create(
+            # 模板列「备注」在源表不存在 → 未映射 → 下拉应为空白
+            "模板", [TemplateColumn(key="custom_1", name="备注")],
+            source_format="text",
+        )
+        panel._file_path = "/tmp/data.csv"
+        panel._sheet_data = SheetData(
+            sheet_name="s", headers=["姓名", "", "手机号"],  # 含空表头
+            rows=[{"姓名": "张三", "手机号": "138"}],
+        )
+        try:
+            with mock.patch(
+                "features.contacts_import.panel.get_templates_dir",
+                return_value=tpl_dir,
+            ), mock.patch(
+                "features.contacts_import.ui.base.QMessageBox.warning",
+            ):
+                panel._reload_templates()
+                panel._apply_template_by_name("模板")
+            combo = panel._mapping_table.cellWidget(0, 2)
+            self.assertIsInstance(combo, QComboBox)
+            texts = [combo.itemText(i) for i in range(combo.count())]
+            self.assertNotIn("", texts)                    # 无空项
+            self.assertNotIn("（未映射）", texts)           # 无占位项
+            self.assertEqual(combo.currentIndex(), -1)     # 未映射时空白
+        finally:
+            panel.close()
+
+    def test_export_button_gated_to_step_three(self):
+        """导出按钮仅第三步且预览正常时开放；回到第二步立即禁用。"""
+        import tempfile
+        from unittest import mock
+        from core.file_io.base import SheetData
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+        from features.contacts_import.panel import ContactsImportPanel
+
+        panel = ContactsImportPanel()
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_gate_"))
+        TemplateManager(tpl_dir, []).create(
+            "模板", [TemplateColumn(key="name", name="姓名")],
+            source_format="text",
+        )
+        panel._file_path = "/tmp/data.csv"
+        panel._sheet_data = SheetData(
+            sheet_name="s", headers=["姓名", "手机号"],
+            rows=[{"姓名": "张三", "手机号": "138"}],
+        )
+        try:
+            with mock.patch(
+                "features.contacts_import.panel.get_templates_dir",
+                return_value=tpl_dir,
+            ):
+                panel._reload_templates()
+                panel._apply_template_by_name("模板")  # 全匹配 → 第三步
+            self.assertEqual(panel._stack.currentIndex(), 2)
+            self.assertTrue(panel._export_btn.isEnabled())  # 第三步可导出
+
+            panel._goto_step(1)  # 回到第二步
+            self.assertFalse(
+                panel._export_btn.isEnabled(),
+                "离开第三步导出按钮必须立即禁用",
+            )
+
+            panel._goto_step(2)  # 预览仍在 → 重新开放
+            self.assertTrue(panel._export_btn.isEnabled())
+
+            panel._preview = None  # 预览失效
+            panel._goto_step(2)
+            self.assertFalse(panel._export_btn.isEnabled())
+        finally:
+            panel.close()
+
+    def test_template_format_family_gating(self):
+        """模板来源格式族门控：xlsx 模板不得自动匹配到 csv/txt 源（防误检）。"""
+        import tempfile
+        from unittest import mock
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+        from features.contacts_import.panel import ContactsImportPanel
+
+        panel = ContactsImportPanel()
+        # 格式族判定
+        self.assertEqual(panel._source_format_family("a.xlsx"), "excel")
+        self.assertEqual(panel._source_format_family("b.xls"), "excel")
+        self.assertEqual(panel._source_format_family("c.csv"), "text")
+        self.assertEqual(panel._source_format_family("d.txt"), "text")
+        self.assertIsNone(panel._source_format_family("e.docx"))
+
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_fmt_"))
+        manager = TemplateManager(tpl_dir, [])
+        excel_tpl = manager.create(
+            "Excel 模板", [TemplateColumn(key="name", name="姓名")],
+            source_format="excel",
+        )
+        old_tpl = manager.create(
+            "旧模板", [TemplateColumn(key="name", name="姓名")],
+        )  # 无来源=不限（旧模板兼容）
+        headers = ["姓名", "手机号"]
+        try:
+            # excel 模板 + csv 源表头撞名 → 不匹配（修复点）
+            panel._file_path = "/tmp/data.csv"
+            self.assertFalse(
+                panel._template_matches_headers(excel_tpl, headers),
+                "excel 模板不得误检到 csv 源",
+            )
+            # excel 模板 + xlsx 源 → 匹配
+            panel._file_path = "/tmp/data.xlsx"
+            self.assertTrue(
+                panel._template_matches_headers(excel_tpl, headers),
+            )
+            # 旧模板（无来源）任何格式都可匹配（兼容）
+            panel._file_path = "/tmp/data.csv"
+            self.assertTrue(panel._template_matches_headers(old_tpl, headers))
+        finally:
+            panel.close()
+
+    def test_template_source_format_roundtrip(self):
+        """模板 source_format 序列化往返（保存/加载不丢失）。"""
+        import tempfile
+        from core.template import TemplateManager
+        from core.template.config import TemplateColumn
+
+        tpl_dir = Path(tempfile.mkdtemp(prefix="wps_fmt2_"))
+        manager = TemplateManager(tpl_dir, [])
+        manager.create(
+            "带格式模板", [TemplateColumn(key="phone", name="手机号")],
+            source_format="text",
+        )
+        loaded = manager.list_templates()[0]
+        self.assertEqual(loaded.source_format, "text")
 
     def test_prompt_save_skipped_when_saved_template_applied(self):
         """已应用保存模板时导出成功不再弹「保存为模板」（mock 断言输入框未被调用）。"""

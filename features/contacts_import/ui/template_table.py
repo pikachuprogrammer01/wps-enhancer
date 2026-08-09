@@ -31,18 +31,22 @@ class TemplateTableMixin:
 
     def _fill_template_table(self, templates: List[Template]) -> None:
         """填充模板表格：默认映射项 + 模板列表 + 末行新建提示（双击输入创建）。"""
+        headers = self._sheet_data.headers if self._sheet_data else None
         self._template_table.blockSignals(True)
         try:
             self._template_table.setRowCount(len(templates) + 2)
-            # 首行：默认映射（内置列）
+            # 首行：默认映射（内置列，任何源文件均可尝试）
             self._fill_template_row(
                 0, _DEFAULT_MAPPING_NAME,
                 "、".join(c.label for c in get_app_settings().builtin_columns),
-                gray=True,
+                gray=True, can_apply=True,
             )
             for row, t in enumerate(templates, start=1):
                 cols = "、".join(c.name for c in t.columns if c.enabled)
-                self._fill_template_row(row, t.name, cols)
+                can_apply = bool(headers) and self._template_matches_headers(
+                    t, headers,
+                )
+                self._fill_template_row(row, t.name, cols, can_apply=can_apply)
             # 末行：占位提示（仅第二列可编辑，双击输入创建模板）
             placeholder_row = len(templates) + 1
             hint_item = self._make_cell_item(_TEMPLATE_CREATE_HINT, 260)
@@ -99,8 +103,13 @@ class TemplateTableMixin:
 
     def _fill_template_row(
         self, row: int, name: str, cols: str, gray: bool = False,
+        can_apply: bool = True,
     ) -> None:
-        """填充模板表格的一行（模板名存 UserRole）并放置该行操作按钮。"""
+        """填充模板表格的一行（模板名存 UserRole）并放置该行操作按钮。
+
+        can_apply=False 时「应用」按钮禁用（模板与当前源文件无法映射），
+        悬停提示原因；无源文件时全部禁用。
+        """
         name_item = self._make_cell_item(name, 160)
         name_item.setData(Qt.ItemDataRole.UserRole, name)
         cols_item = self._make_cell_item(cols, 260)
@@ -118,6 +127,12 @@ class TemplateTableMixin:
         apply_btn = QPushButton("应用")
         apply_btn.setFixedWidth(44)
         apply_btn.setStyleSheet(compact_style)
+        apply_btn.setEnabled(can_apply)
+        if not can_apply:
+            apply_btn.setToolTip(
+                "该模板与当前源文件无法映射"
+                "（格式不同或无匹配列），请先选择匹配的源文件",
+            )
         apply_btn.clicked.connect(
             lambda checked=False, n=name: self._apply_template_by_name(n),
         )
@@ -181,8 +196,13 @@ class TemplateTableMixin:
             return
         self._apply_template_by_name(name)
 
+    @_safe_slot  # 行内按钮经 lambda 连接，无此装饰异常会直接 abort
     def _apply_template_by_name(self, name: str) -> None:
-        """按模板名应用模板（未选择源文件时提示并终止）。"""
+        """按模板名应用模板（未选择源文件时提示并终止）。
+
+        匹配策略：全部列映射成功 → 直接进入预览/导出（第三步）；
+        存在未映射列 → 明确提示后停留在列映射（第二步）手动补全。
+        """
         if self._sheet_data is None:
             _dlg.QMessageBox.information(
                 self, "提示", "请先选择源文件，再应用模板",
@@ -203,7 +223,25 @@ class TemplateTableMixin:
             self._manual_map = dict(template.mappings)
         self._rebuild_matches()
         self._refresh_preview()
-        self._goto_step(2)  # 应用成功直接进入预览与导出（映射已在模板中）
+        # 未映射列：明确提示并强制停留在列映射（第二步），避免残缺映射直接导出
+        unmapped = [
+            m.template_col.name for m in self._matches
+            if m.status == "none" and m.template_col.enabled
+        ]
+        if unmapped:
+            _dlg.QMessageBox.warning(
+                self, "部分列未映射",
+                f"模板中有 {len(unmapped)} 列未在源表中找到对应列：\n"
+                f"{'、'.join(unmapped)}\n\n"
+                "已停留在「列映射」步骤，请为这些列手动指定源列；"
+                "如需导出空白内容可清空该列后继续。",
+            )
+            self._status_bar.show_warning(
+                "部分模板列未映射，请在列映射中手动补全",
+            )
+            self._goto_step(1)
+            return
+        self._goto_step(2)  # 完全匹配：直接进入预览与导出
         get_logger("contacts_import.panel").info(
             f"模板 '{name}' 应用成功，映射列数={len(self._matches)}"
         )

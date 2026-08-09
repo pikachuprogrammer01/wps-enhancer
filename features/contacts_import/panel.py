@@ -55,11 +55,20 @@ class ContactsImportPanel(
     # ========== 步骤导航 ==========
 
     def _goto_step(self, index: int) -> None:
-        """切换步骤页并更新步骤指示与导航按钮。"""
+        """切换步骤页并更新步骤指示与导航按钮。
+
+        导出按钮仅第三步且预览正常有数据时开放；离开第三步立即禁用
+        （防止回到第二步后仍可导出）。
+        """
         self._stack.setCurrentIndex(index)
         self._update_step_indicators(index)
         self._prev_btn.setEnabled(index > 0)
         self._next_btn.setEnabled(index < 2)
+        self._export_btn.setEnabled(
+            index == 2
+            and self._preview is not None
+            and bool(self._preview.rows)
+        )
 
     def _update_step_indicators(self, current: int) -> None:
         """更新步骤指示条：已完成绿色✓、当前蓝色高亮、未完成灰色。"""
@@ -167,11 +176,11 @@ class ContactsImportPanel(
         if path == self._file_path:
             return  # 路径未变化：避免失焦/回车重复触发重新加载链
         suffix = Path(path).suffix.lower().lstrip(".")
-        if suffix not in ("xls", "xlsx", "csv"):
+        if suffix not in ("xls", "xlsx", "csv", "txt"):
             _dlg.QMessageBox.warning(
                 self, "格式错误",
                 f"不支持的文件格式：{suffix or '无后缀'}，"
-                "请选择 .xls / .xlsx / .csv 文件",
+                "请选择 .xls / .xlsx / .csv / .txt 文件",
             )
             self._status_bar.show_error("文件格式不支持，无法继续下一步")
             return
@@ -233,6 +242,8 @@ class ContactsImportPanel(
                 self._file_path, sheet_name,
                 skip_declaration=settings.declaration_detect,
                 declaration_keywords=list(settings.declaration_keywords),
+                separator=settings.source_separator,
+                encoding=settings.source_encoding,
             )
             self._sheet_data = data
             self._fill_source_table()
@@ -312,12 +323,36 @@ class ContactsImportPanel(
     def _template_matches_headers(
         self, template: Template, headers: List[str],
     ) -> bool:
-        """判断模板是否能与源表头匹配（至少一列有映射建议或自动匹配成功）。"""
+        """判断模板是否能与源表头匹配（至少一列有映射建议或自动匹配成功）。
+
+        格式族过滤：模板保存来源为 excel/text 时，仅同族文件可自动匹配，
+        避免 xlsx 模板误检到 csv/txt 源导致映射残缺（旧模板无来源=不限）。
+        """
+        if template.source_format:
+            family = self._source_format_family(self._file_path)
+            if family and template.source_format != family:
+                return False
         settings = get_app_settings()
         matches = match_columns(
             headers, template, settings.builtin_columns, dict(template.mappings),
         )
-        return any(m.source_col for m in matches)
+        # 可匹配 = 至少一列的源列真实存在于当前表头。
+        # manual 建议映射保存时是别的文件的列名，必须验证存在性，
+        # 否则「建议映射指向不存在的列」也会误判为可匹配。
+        stripped = {h.strip() for h in headers}
+        return any(
+            m.source_col and m.source_col.strip() in stripped for m in matches
+        )
+
+    @staticmethod
+    def _source_format_family(file_path: str) -> Optional[str]:
+        """返回源文件格式族：xls/xlsx → excel，csv/txt → text，其余 None。"""
+        suffix = Path(file_path).suffix.lower()
+        if suffix in (".xls", ".xlsx"):
+            return "excel"
+        if suffix in (".csv", ".txt"):
+            return "text"
+        return None
 
     # ========== 重置 ==========
 

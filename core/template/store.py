@@ -42,6 +42,7 @@ def save_template(template: Template, path: Path) -> None:
         "version": TEMPLATE_FILE_VERSION,
         "columns": [asdict(col) for col in template.columns],
         "mappings": dict(template.mappings),
+        "source_format": template.source_format,
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,7 +72,10 @@ def load_template(path: Path) -> Template:
         } if isinstance(mappings_raw, dict) else {}
     except (json.JSONDecodeError, AttributeError) as e:
         raise FileReadError(f"模板文件 '{path}' 格式损坏：{e}") from e
-    return Template(name=name, columns=columns, mappings=mappings)
+    return Template(
+        name=name, columns=columns, mappings=mappings,
+        source_format=raw.get("source_format") or None,  # 旧模板无字段=不限
+    )
 
 
 @log_call("core.template.store")

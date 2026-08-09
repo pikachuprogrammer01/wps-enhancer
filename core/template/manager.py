@@ -23,20 +23,25 @@ class TemplateManager:
     def create(
         self, name: str, columns: List[TemplateColumn],
         mappings: Optional[Dict[str, str]] = None,
+        source_format: Optional[str] = None,
     ) -> Template:
-        """创建新模板（名称校验 + 重名自动加序号，可带建议映射）。"""
+        """创建新模板（名称校验 + 重名自动加序号，可带建议映射与来源格式族）。"""
         cleaned = self._validate_name(name)
         final_name = self._unique_name(cleaned)
         template = Template(
             name=final_name, columns=columns,
             mappings=dict(mappings) if mappings else {},
+            source_format=source_format,
         )
         store.save_template(template, self._template_path(final_name))
         return template
 
     @log_call("core.template.manager")
-    def create_from_headers(self, name: str, headers: List[str]) -> Template:
-        """从表头列表创建模板（自动识别内置列语义 key）。"""
+    def create_from_headers(
+        self, name: str, headers: List[str],
+        source_format: Optional[str] = None,
+    ) -> Template:
+        """从表头列表创建模板（自动识别内置列语义 key，可带来源格式族）。"""
         columns: List[TemplateColumn] = []
         custom_index = 1
         for header in headers:
@@ -50,7 +55,7 @@ class TemplateManager:
             columns.append(TemplateColumn(key=key, name=stripped))
         if not columns:
             raise TemplateError("表头为空，无法创建模板")
-        return self.create(name, columns)
+        return self.create(name, columns, source_format=source_format)
 
     @log_call("core.template.manager")
     def rename(self, old_name: str, new_name: str) -> Template:

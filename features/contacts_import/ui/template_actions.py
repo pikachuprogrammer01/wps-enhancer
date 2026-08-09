@@ -56,7 +56,10 @@ class TemplateActionsMixin:
         edited = dialog.get_template()
         manager = self._get_manager()
         if template is None:
-            manager.create(edited.name, edited.columns)
+            manager.create(
+                edited.name, edited.columns,
+                source_format=self._source_format_family(self._file_path),
+            )
         else:
             manager.update_columns(template.name, edited.columns)
         self._reload_templates()
@@ -75,6 +78,7 @@ class TemplateActionsMixin:
             return
         template = self._get_manager().create_from_headers(
             name.strip(), self._sheet_data.headers,
+            source_format=self._source_format_family(self._file_path),
         )
         self._reload_templates()
         self._select_template_by_name(template.name)

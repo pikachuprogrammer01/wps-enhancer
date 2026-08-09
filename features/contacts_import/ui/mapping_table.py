@@ -85,9 +85,12 @@ class MappingTableMixin:
                 self._mapping_table.setItem(row, 1, status_item)
 
                 combo = QComboBox()
-                combo.addItems(headers)
-                current = match.source_col if match.source_col else ""
-                combo.setCurrentText(current)
+                # 源列下拉：仅去除空表头项（空行），无映射时保持未选中（空白）
+                combo.addItems([h for h in headers if h.strip()])
+                if match.source_col:
+                    combo.setCurrentText(match.source_col)
+                else:
+                    combo.setCurrentIndex(-1)  # 未映射：不选中任何项（空白）
                 combo.currentTextChanged.connect(
                     lambda text, r=row: self._on_mapping_changed(r, text),
                 )

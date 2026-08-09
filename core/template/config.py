@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -16,6 +16,9 @@ class Template:
     name: str
     columns: List[TemplateColumn]
     mappings: Dict[str, str] = field(default_factory=dict)
+    # 保存时来源文件格式族（"excel"/"text"）；None=不限（旧模板兼容）。
+    # 自动匹配仅在同格式族间生效，避免 xlsx 模板误检到 csv/txt 源。
+    source_format: Optional[str] = None
 
 
 @dataclass

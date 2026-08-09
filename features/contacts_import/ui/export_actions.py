@@ -141,13 +141,14 @@ class ExportActionsMixin:
         self._save_current_as_template(name.strip())
 
     def _save_current_as_template(self, name: str) -> None:
-        """将当前目标列与映射保存为新模板（映射作为建议保存）。"""
+        """将当前目标列与映射保存为新模板（映射作为建议保存，记录来源格式族）。"""
         mappings = {
             m.template_col.key: m.source_col
             for m in self._matches if m.source_col
         }
         saved = self._get_manager().create(
             name, self._template.columns, mappings,
+            source_format=self._source_format_family(self._file_path),
         )
         self._reload_templates()
         self._select_template_by_name(saved.name)
