@@ -40,11 +40,23 @@ def _replace_guide() -> str:
 
 
 def check_update_now(parent: QWidget, silent_on_failure: bool,
-                     on_done: Optional[Callable[[], None]] = None) -> None:
+                     on_done: Optional[Callable[[], None]] = None,
+                     timeout_ms: int = 15000) -> None:
     """后台检查更新并处理结果（立即返回，不阻塞 UI）。
 
     on_done：结果处理完成后在主线程回调（用于复位 UI 状态，如清空"检查中"文本）。
+    timeout_ms：兜底超时——DNS 解析不受 socket timeout 控制，可能无限挂起；
+    到点仍无结果则按超时处理并提示，保证状态文本永远会复位。
     """
+    done = {"ok": False}
+
+    def _finish(result: tuple) -> None:
+        # 主线程串行执行；guard 与 worker 结果先到者生效（防重复弹窗）
+        if done["ok"]:
+            return
+        done["ok"] = True
+        _handle_result(parent, result, silent_on_failure, on_done)
+
     def worker() -> None:
         try:
             result: tuple = ("ok", check_latest_release())
@@ -54,8 +66,14 @@ def check_update_now(parent: QWidget, silent_on_failure: bool,
         except Exception as e:  # 兜底：任何异常都不允许线程静默卡死
             get_logger("ui.update_flow").exception(f"检查更新异常：{e}")
             result = ("error", f"检查更新异常：{e}")
-        QTimer.singleShot(0, lambda: _handle_result(parent, result, silent_on_failure, on_done))
+        QTimer.singleShot(0, lambda: _finish(result))
 
+    def _guard() -> None:
+        if not done["ok"]:
+            get_logger("ui.update_flow").warning("检查更新超时（15s 兜底）")
+            _finish(("error", "检查超时，请检查网络连接后重试"))
+
+    QTimer.singleShot(timeout_ms, _guard)
     threading.Thread(target=worker, daemon=True).start()
 
 

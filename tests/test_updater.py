@@ -1,5 +1,7 @@
 """自动更新模块测试（版本比较 / Release 解析 / 下载）。"""
 
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -295,6 +297,81 @@ class UpdateFlowUiTest(unittest.TestCase):
             self.assertTrue(dlg._check_update_btn.isEnabled())
         finally:
             dlg.close()
+
+    def test_check_update_timeout_guard(self):
+        """兜底超时：worker 卡死（如 DNS 挂起）时 15s 内必须复位并提示，绝不无限转圈。"""
+        from ui.components import update_flow
+        from core import updater
+
+        blocked = threading.Event()  # 模拟 worker 永久挂起
+
+        def fake_check():
+            blocked.wait(30)
+            return mock.MagicMock()
+
+        done: list = []
+        parent = QtWidgets.QWidget()
+        try:
+            with mock.patch.object(updater, "check_latest_release", fake_check), \
+                    mock.patch.object(QtWidgets.QMessageBox, "warning") as warn, \
+                    mock.patch.object(QtWidgets.QMessageBox, "information"), \
+                    mock.patch.object(QtWidgets.QMessageBox, "question"):
+                update_flow.check_update_now(
+                    parent, silent_on_failure=False,
+                    on_done=lambda: done.append(True), timeout_ms=50,
+                )
+                # 等待 guard 触发（50ms）+ 事件循环处理
+                deadline = time.time() + 5
+                while not done and time.time() < deadline:
+                    self.app.processEvents()
+                    time.sleep(0.02)
+            self.assertEqual(done, [True], "guard 必须复位状态")
+            self.assertTrue(warn.called, "超时必须弹提示")
+            self.assertIn("超时", warn.call_args[0][2])
+        finally:
+            blocked.set()
+            parent.close()
+
+    def test_system_proxy_macos(self):
+        """macOS scutil --proxy 输出解析为代理地址。"""
+        from core import updater
+        scutil_out = (
+            "<dictionary> {\n"
+            "    HTTPEnable : 1\n"
+            "    HTTPProxy : 127.0.0.1\n"
+            "    HTTPPort : 7890\n"
+            "    HTTPSEnable : 1\n"
+            "    HTTPSProxy : 127.0.0.1\n"
+            "    HTTPSPort : 7890\n"
+            "}\n"
+        )
+        with mock.patch.object(updater.platform, "system", return_value="Darwin"), \
+                mock.patch("core.updater.subprocess.run") as run:
+            run.return_value.stdout = scutil_out
+            self.assertEqual(updater._system_proxy(), "http://127.0.0.1:7890")
+
+    def test_system_proxy_none(self):
+        """无代理（或读取失败）返回 None，不抛异常。"""
+        from core import updater
+        with mock.patch.object(updater.platform, "system", return_value="Darwin"), \
+                mock.patch("core.updater.subprocess.run") as run:
+            run.return_value.stdout = "<dictionary> { }"
+            self.assertIsNone(updater._system_proxy())
+        with mock.patch.object(updater.platform, "system", return_value="Darwin"), \
+                mock.patch("core.updater.subprocess.run", side_effect=OSError("no scutil")):
+            self.assertIsNone(updater._system_proxy())
+
+    def test_apply_system_proxy_only_when_unset(self):
+        """环境变量已有代理时不覆盖；无环境变量时写入系统代理。"""
+        from core import updater
+        with mock.patch.object(updater, "_system_proxy", return_value="http://127.0.0.1:7890"), \
+                mock.patch.dict(updater.os.environ, {}, clear=True):
+            updater._apply_system_proxy()
+            self.assertEqual(updater.os.environ.get("HTTPS_PROXY"), "http://127.0.0.1:7890")
+        with mock.patch.object(updater, "_system_proxy", return_value="http://127.0.0.1:7890"), \
+                mock.patch.dict(updater.os.environ, {"HTTPS_PROXY": "http://custom:1"}, clear=True):
+            updater._apply_system_proxy()
+            self.assertEqual(updater.os.environ["HTTPS_PROXY"], "http://custom:1")
 
 
 if __name__ == "__main__":

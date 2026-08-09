@@ -7,8 +7,11 @@
 """
 
 import json
+import os
 import platform
+import re
 import ssl
+import subprocess
 import urllib.error
 import urllib.request
 
@@ -62,6 +65,51 @@ def compare_versions(local: str, remote: str) -> int:
     return 0
 
 
+def _system_proxy() -> Optional[str]:
+    """读取系统代理地址（macOS scutil / Windows 注册表），返回 http://host:port。
+
+    打包版从 Finder/资源管理器启动时没有 shell 代理环境变量，
+    urlopen 不会自动走系统代理（国内访问 GitHub 的主要卡点之一）。
+    读取失败或无代理返回 None。
+    """
+    try:
+        if platform.system() == "Windows":
+            import winreg
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            ) as key:
+                enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
+                if not enable:
+                    return None
+                server, _ = winreg.QueryValueEx(key, "ProxyServer")
+                return server or None
+        # macOS：scutil --proxy 输出形如 "HTTPSProxy : 127.0.0.1" / "HTTPSPort : 7890"
+        out = subprocess.run(
+            ["scutil", "--proxy"], capture_output=True, text=True, timeout=3,
+        ).stdout
+        m = re.search(r"HTTPSProxy\s*:\s*([^\s]+)", out)
+        port_m = re.search(r"HTTPSPort\s*:\s*(\d+)", out)
+        if not m:
+            m = re.search(r"HTTPProxy\s*:\s*([^\s]+)", out)
+            port_m = port_m or re.search(r"HTTPPort\s*:\s*(\d+)", out)
+        if not m:
+            return None
+        return f"http://{m.group(1)}:{port_m.group(1) if port_m else 80}"
+    except Exception:
+        return None
+
+
+def _apply_system_proxy() -> None:
+    """把系统代理写入 HTTPS_PROXY/HTTP_PROXY 环境变量（仅在未显式设置时）。"""
+    if os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"):
+        return
+    proxy = _system_proxy()
+    if proxy:
+        os.environ["HTTPS_PROXY"] = proxy
+        os.environ["HTTP_PROXY"] = proxy
+
+
 @log_call("core.updater", log_args=False, log_result=False)
 def check_latest_release(
     repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT,
@@ -75,6 +123,7 @@ def check_latest_release(
     """
     platform = platform or _current_platform()
     arch = arch or _current_arch()
+    _apply_system_proxy()  # 打包版无 shell 代理环境：从系统代理补上
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     try:
@@ -161,6 +210,7 @@ def _current_arch() -> str:
 @log_call("core.updater", log_args=False)
 def download_file(url: str, dest: Path, timeout: int = 30) -> Path:
     """流式下载 url 到 dest（覆盖），返回 dest；失败抛 UpdaterError。"""
+    _apply_system_proxy()  # 下载同样走系统代理
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     context = ssl.create_default_context(cafile=certifi.where())
     try:
