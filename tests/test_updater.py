@@ -286,7 +286,8 @@ class UpdateFlowUiTest(unittest.TestCase):
         try:
             self._check_called: list = []
 
-            def fake_check(parent, silent_on_failure, on_done=None, use_proxy=True):
+            def fake_check(parent, silent_on_failure, on_done=None,
+                           use_proxy=True, update_url=None):
                 self._check_called.append(silent_on_failure)
                 self._proxy_called = use_proxy
                 on_done()  # 模拟后台完成
@@ -450,3 +451,60 @@ class FallbackTest(unittest.TestCase):
             with self.assertRaises(UpdaterError) as ctx:
                 check_latest_release()
         self.assertIn("解析", str(ctx.exception))
+
+
+class CustomUpdateSourceTest(unittest.TestCase):
+    """自定义更新源（update.json）：成功 / 字段缺失 / 不可达回退 GitHub。"""
+
+    def _json_resp(self, payload: dict):
+        resp = mock.MagicMock()
+        resp.status = 200
+        resp.read.return_value = __import__("json").dumps(payload).encode()
+        resp.__enter__.return_value = resp
+        return resp
+
+    def test_custom_source_success(self):
+        """配置自定义源且可达：直接返回自定义版本与下载地址。"""
+        from urllib.error import URLError
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [self._json_resp({
+                "version": "1.3.0",
+                "url": "https://mirror.example.com/WPSEnhancer-macOS-arm64.zip",
+                "notes": "修复导出崩溃",
+            })]
+            info = check_latest_release(update_url="https://mirror.example.com/update.json")
+        self.assertEqual(info.tag_name, "v1.3.0")
+        self.assertTrue(info.zip_url.startswith("https://mirror.example.com"))
+        self.assertEqual(info.notes, "修复导出崩溃")
+        self.assertEqual(urlopen.call_count, 1)  # 不再请求 GitHub
+
+    def test_custom_source_missing_version(self):
+        """自定义源缺 version 字段：明确报错。"""
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [self._json_resp({
+                "url": "https://mirror.example.com/pkg.zip",
+            })]
+            with self.assertRaises(UpdaterError) as ctx:
+                check_latest_release(update_url="https://mirror.example.com/update.json")
+        self.assertIn("version", str(ctx.exception))
+
+    def test_custom_source_unreachable_falls_back(self):
+        """自定义源不可达：回退 GitHub（API 成功路径）。"""
+        from urllib.error import URLError
+        payload = {
+            "tag_name": "v1.2.0",
+            "assets": [{
+                "name": "WPSEnhancer-macOS-arm64.zip",
+                "browser_download_url": "https://github.com/x/pkg.zip",
+                "size": 1,
+            }],
+        }
+        resp = mock.MagicMock()
+        resp.status = 200
+        resp.read.return_value = __import__("json").dumps(payload).encode()
+        resp.__enter__.return_value = resp
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [URLError("custom down"), resp]
+            info = check_latest_release(update_url="https://mirror.example.com/update.json")
+        self.assertEqual(info.tag_name, "v1.2.0")
+        self.assertEqual(urlopen.call_count, 2)

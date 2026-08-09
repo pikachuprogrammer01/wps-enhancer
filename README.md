@@ -68,6 +68,27 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 > 架构说明：资产名由 CI runner 架构动态生成（macOS `uname -m`；Windows 优先 `PROCESSOR_ARCHITEW6432`，回退 `PROCESSOR_ARCHITECTURE`，映射 `AMD64→x86_64`、`ARM64→arm64`、其余→`x86`）。客户端 `_current_arch()` 同样区分 `arm64` / `x86_64` / `x86` 三档（32 位 Windows 不会误下 64 位包），文件名按 `-` 分词段精确匹配（x86 不会误中 x86_64 资产）。匹配优先级：平台+架构精确匹配 → 回退仅平台（兼容无架构标签的旧资产）。
 > 重新发布同一 tag 时旧资产不会自动删除，请先手动清理 Releases 页面残留的旧资产（如 `WPS.-macOS.zip`、`WPS.exe`）。
 
+### 自定义更新源（国内网络访问 GitHub 不稳定时）
+
+检查与下载更新默认走 GitHub Releases；若网络受限（连 `git push` 都超时的场景），可在 **设置 → 更新 → 自定义更新源** 填入一个 `update.json` 的 HTTP(S) 地址，app 将**优先从自定义源**检查与下载，失败才回退 GitHub。
+
+**update.json 格式**（任意可达的静态地址即可，推荐 Gitee 仓库 raw 或对象存储 OSS/COS 静态托管）：
+
+```json
+{
+  "version": "1.1.0",
+  "url": "https://gitee.com/你的账号/wps-enhancer/raw/master/WPSEnhancer-macOS-arm64.zip",
+  "notes": "本次更新内容说明（可选，会显示在更新提示框中）"
+}
+```
+
+- `version`：版本号（可带 `v` 前缀）
+- `url`：更新包 zip 的直链（按平台/架构分别准备，如 `WPSEnhancer-macOS-arm64.zip`、`WPSEnhancer-Windows-x86_64.zip`）
+- `notes`：可选，更新说明
+
+> Gitee 托管示例：把 `update.json` 与各平台 zip 放进 Gitee 仓库，raw 地址形如 `https://gitee.com/<用户名>/<仓库>/raw/<分支>/update.json`——国内直连可达，无需服务器。
+> 配置错误（非 JSON / 缺 `version` / 缺 `url`）会直接提示，不会静默回退；仅"源不可达"时回退 GitHub。
+
 > ⚠️ 当前 app 为 ad-hoc 签名，从 GitHub 下载的 .app 首次打开需右键 → 打开（或 `xattr -d com.apple.quarantine <路径>`）绕过 Gatekeeper。
 
 ### 验证打包产物

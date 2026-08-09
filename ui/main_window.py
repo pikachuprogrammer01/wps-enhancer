@@ -201,5 +201,8 @@ class MainWindow(QMainWindow):
         settings = get_app_settings()
         QTimer.singleShot(
             4000,
-            lambda: check_update_now(self, True, use_proxy=settings.use_system_proxy),
+            lambda: check_update_now(
+                self, True, use_proxy=settings.use_system_proxy,
+                update_url=settings.update_url or None,
+            ),
         )

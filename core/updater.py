@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.exceptions import WpsEnhancerError
-from core.logger import log_call
+from core.logger import get_logger, log_call
 
 # GitHub 仓库（公开仓库无需 token）
 REPO = "pikachuprogrammer01/wps-enhancer"
@@ -41,6 +41,10 @@ class _NoRelease(UpdaterError):
     """仓库确实没有已发布版本（404）——回退网页端也没有意义。"""
 
 
+class _InvalidUpdateSource(UpdaterError):
+    """自定义更新源配置错误（JSON 格式/字段缺失）——回退会掩盖配置问题。"""
+
+
 @dataclass
 class ReleaseInfo:
     """GitHub Release 摘要信息。"""
@@ -49,6 +53,7 @@ class ReleaseInfo:
     zip_url: Optional[str] = None   # 更新包下载地址（zip 资产）
     zip_size: Optional[int] = None  # 更新包字节数
     published_at: str = ""
+    notes: str = ""        # 更新说明（自定义源/Release body）
 
 
 def compare_versions(local: str, remote: str) -> int:
@@ -123,12 +128,15 @@ def check_latest_release(
     repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT,
     platform: Optional[str] = None, arch: Optional[str] = None,
     use_system_proxy: bool = True,
+    update_url: Optional[str] = None,
 ) -> ReleaseInfo:
-    """查询 GitHub Releases 最新版本（网络/解析失败抛 UpdaterError）。
+    """查询最新版本（网络/解析失败抛 UpdaterError）。
 
     platform：更新包平台标签（"macos"/"windows"，默认按当前系统）；
     arch：架构标签（"arm64"/"x86_64"/"x86"，默认按当前机器）。
     use_system_proxy：是否自动读取并使用系统代理（打包版无 shell 代理环境）。
+    update_url：自定义更新源（update.json 地址）。配置后优先使用自定义源
+    （国内访问 GitHub 不稳定时可托管到 Gitee/OSS 等可达地址），失败回退 GitHub。
     资产匹配：优先「平台+架构」精确匹配，回退「仅平台」匹配（兼容旧资产）。
     网络策略：api.github.com 失败（非 404）自动回退 github.com 网页端
     （fastly CDN 连通性通常更好，国内访问更稳）。
@@ -137,6 +145,15 @@ def check_latest_release(
     arch = arch or _current_arch()
     if use_system_proxy:
         _apply_system_proxy()  # 打包版无 shell 代理环境：从系统代理补上
+    if update_url:
+        try:
+            return _check_via_custom(update_url, timeout)
+        except _InvalidUpdateSource:
+            raise  # 源配置错误必须暴露，回退会掩盖问题
+        except UpdaterError as e:
+            get_logger("core.updater").warning(
+                f"自定义更新源不可达，回退 GitHub：{e}",
+            )
     try:
         return _check_via_api(repo, timeout, platform, arch)
     except _NoRelease:
@@ -149,6 +166,47 @@ def check_latest_release(
             raise UpdaterError(
                 f"检查更新失败（API 与网页两种方式均不可达）：{html_err}"
             ) from api_err
+
+
+def _check_via_custom(update_url: str, timeout: int) -> ReleaseInfo:
+    """通过自定义更新源查询最新版本（update.json）。
+
+    格式：{"version": "1.1.0", "url": "https://.../包.zip", "notes": "说明"}
+    字段缺失/格式错误抛 UpdaterError（明确提示，不静默）。
+    """
+    req = urllib.request.Request(update_url, headers={"User-Agent": _UA})
+    try:
+        context = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
+            if resp.status != 200:
+                raise UpdaterError(f"自定义更新源返回状态码 {resp.status}")
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise UpdaterError(f"自定义更新源返回状态码 {e.code}") from e
+    except (urllib.error.URLError, TimeoutError) as e:
+        raise UpdaterError(f"无法连接自定义更新源：{e}") from e
+    except (ssl.SSLError, OSError) as e:
+        raise UpdaterError(f"网络或证书异常：{e}") from e
+    except json.JSONDecodeError as e:
+        raise _InvalidUpdateSource(
+            f"自定义更新源格式错误（非 JSON）：{e}",
+        ) from e
+
+    version = str(data.get("version", "")).strip()
+    zip_url = str(data.get("url", "")).strip()
+    if not version:
+        raise _InvalidUpdateSource("自定义更新源缺少 version 字段")
+    if not zip_url:
+        raise _InvalidUpdateSource("自定义更新源缺少 url 字段")
+    tag = version if version.startswith("v") else f"v{version}"
+    return ReleaseInfo(
+        tag_name=tag,
+        html_url=update_url,
+        zip_url=zip_url,
+        zip_size=None,
+        published_at="",
+        notes=str(data.get("notes", "")),
+    )
 
 
 def _check_via_api(

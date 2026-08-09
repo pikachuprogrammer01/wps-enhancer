@@ -45,6 +45,7 @@ class AppSettings:
     log_debug: bool = False
     auto_update_enabled: bool = True  # 启动时自动检查 GitHub Releases 更新
     use_system_proxy: bool = True     # 检查/下载更新时自动走系统代理（默认开启）
+    update_url: str = ""              # 自定义更新源（update.json 地址，留空用 GitHub）
 
 
 _cache: Optional[AppSettings] = None
@@ -71,6 +72,8 @@ def _settings_dict(settings: AppSettings) -> dict:
             "declaration_keywords": list(settings.declaration_keywords),
             "log_debug": settings.log_debug,
             "auto_update_enabled": settings.auto_update_enabled,
+            "use_system_proxy": settings.use_system_proxy,
+            "update_url": settings.update_url,
         },
     }
 
@@ -137,6 +140,10 @@ def _load_from_file(path: Path) -> AppSettings:
         auto_update_enabled=bool(app.get(
             "auto_update_enabled", defaults.auto_update_enabled,
         )),
+        use_system_proxy=bool(app.get(
+            "use_system_proxy", defaults.use_system_proxy,
+        )),
+        update_url=str(app.get("update_url", defaults.update_url)),
     )
 
 

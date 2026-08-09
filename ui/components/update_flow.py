@@ -42,13 +42,15 @@ def _replace_guide() -> str:
 def check_update_now(parent: QWidget, silent_on_failure: bool,
                      on_done: Optional[Callable[[], None]] = None,
                      timeout_ms: int = 18000,
-                     use_proxy: bool = True) -> None:
+                     use_proxy: bool = True,
+                     update_url: Optional[str] = None) -> None:
     """后台检查更新并处理结果（立即返回，不阻塞 UI）。
 
     on_done：结果处理完成后在主线程回调（用于复位 UI 状态，如清空"检查中"文本）。
     timeout_ms：兜底超时（双端点各 8s + 缓冲）——DNS 解析不受 socket timeout 控制，
     可能无限挂起；到点仍无结果则按超时处理并提示，保证状态文本永远会复位。
     use_proxy：是否自动使用系统代理（来自设置，默认开启）。
+    update_url：自定义更新源（update.json 地址，来自设置；空则用 GitHub）。
     """
     done = {"ok": False}
 
@@ -61,7 +63,12 @@ def check_update_now(parent: QWidget, silent_on_failure: bool,
 
     def worker() -> None:
         try:
-            result: tuple = ("ok", check_latest_release(use_system_proxy=use_proxy))
+            result: tuple = (
+                "ok",
+                check_latest_release(
+                    use_system_proxy=use_proxy, update_url=update_url,
+                ),
+            )
         except UpdaterError as e:
             get_logger("ui.update_flow").warning(f"检查更新失败：{e}")
             result = ("error", str(e))
@@ -98,9 +105,10 @@ def _handle_result(parent: QWidget, result: tuple, silent: bool,
         if on_done is not None:
             on_done()
         return
+    notes_text = f"\n更新说明：{info.notes}\n" if info.notes else ""
     answer = QMessageBox.question(
         parent, "发现新版本",
-        f"发现新版本 {info.tag_name}（当前 v{APP_VERSION}）\n"
+        f"发现新版本 {info.tag_name}（当前 v{APP_VERSION}）{notes_text}\n"
         f"发布时间：{info.published_at[:10]}\n\n是否下载更新包？",
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.Yes,

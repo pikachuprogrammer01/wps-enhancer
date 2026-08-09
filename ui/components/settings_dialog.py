@@ -73,6 +73,20 @@ class SettingsDialog(QDialog):
         self._proxy_check = QCheckBox("自动使用系统代理（网络受限时建议开启）")
         self._proxy_check.setChecked(self._settings.use_system_proxy)
         layout.addWidget(self._proxy_check)
+        self._update_url_edit = QLineEdit(self._settings.update_url)
+        self._update_url_edit.setPlaceholderText(
+            "https://example.com/update.json（留空使用 GitHub Releases）",
+        )
+        layout.addWidget(QLabel("自定义更新源（国内网络不稳定时使用）"))
+        layout.addWidget(self._update_url_edit)
+        tip = QLabel(
+            "留空则从 GitHub Releases 检查更新；填写 update.json 地址后优先从"
+            "自定义源检查与下载（可托管到 Gitee/OSS 等国内可达地址，"
+            "格式见 README「自定义更新源」）。",
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color: #888888; font-size: 11px;")
+        layout.addWidget(tip)
         row = QHBoxLayout()
         row.addWidget(QLabel(f"当前版本：v{APP_VERSION}"))
         row.addStretch()
@@ -100,6 +114,7 @@ class SettingsDialog(QDialog):
         check_update_now(
             self, silent_on_failure=False, on_done=_reset_status,
             use_proxy=self._settings.use_system_proxy,
+            update_url=self._update_url_edit.text().strip() or None,
         )
 
     def _build_import_tab(self) -> QWidget:
@@ -605,6 +620,7 @@ class SettingsDialog(QDialog):
             log_debug=self._log_debug_check.isChecked(),
             auto_update_enabled=self._auto_update_check.isChecked(),
             use_system_proxy=self._proxy_check.isChecked(),
+            update_url=self._update_url_edit.text().strip(),
         )
         return settings
 
