@@ -184,7 +184,10 @@ def _load_from_file(path: Path) -> AppSettings:
         use_system_proxy=bool(app.get(
             "use_system_proxy", defaults.use_system_proxy,
         )),
-        update_url=str(app.get("update_url", defaults.update_url)),
+        # 空值视为未设置（旧版设置残留可能存过空 update_url），回退默认 Gitee 源
+        update_url=(
+            app.get("update_url") or defaults.update_url
+        ),
         download_dir=str(app.get("download_dir", defaults.download_dir)),
         install_dir=str(app.get("install_dir", defaults.install_dir)),
     )
