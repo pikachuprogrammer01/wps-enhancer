@@ -670,6 +670,7 @@ class InstallGuideTest(unittest.TestCase):
 
     def test_start_download_shows_immediate_guide(self):
         """点 Yes 后立即 toast 引导（下载前有反馈，不是关闭弹窗就没后续）。"""
+        import time
         from unittest import mock as _mock
         from ui.components import update_flow as uf
         info = ReleaseInfo(
@@ -682,13 +683,17 @@ class InstallGuideTest(unittest.TestCase):
         ) as info_mock:
             with _mock.patch.object(uf, "_resolve_download_dir") as dir_mock:
                 with _mock.patch("ui.components.toast.show_toast") as toast_mock:
-                    with _mock.patch.object(
-                        uf, "download_file", side_effect=RuntimeError("stop thread"),
-                    ):
-                        with _mock.patch("threading.Thread.start"):
+                    with _mock.patch.object(uf, "download_file") as dl_mock:
+                        with _mock.patch.object(
+                            uf, "_handle_download_done",
+                        ) as done_mock:
                             dir_mock.return_value = Path("/tmp/up_test")
                             uf._start_download(None, info)
+                            # worker 秒成功 → 信号回主线程（无事件循环不弹窗；
+                            # 信号链路由 test_download_worker_* 单元测试覆盖）
+                            time.sleep(0.3)
         self.assertFalse(info_mock.called)  # 有 zip_url，不走「未提供更新包」分支
+        self.assertTrue(dl_mock.called)     # 后台下载确实启动
         self.assertTrue(toast_mock.called)
         text = toast_mock.call_args.args[1]
         self.assertIn("开始下载更新包 v9.9.9", text)
@@ -697,3 +702,35 @@ class InstallGuideTest(unittest.TestCase):
         with _mock.patch.object(uf, "QMessageBox") as msg_mock:
             uf._handle_download_done(None, ("error", "网络异常"))
         self.assertTrue(msg_mock.warning.called)
+
+    def test_download_worker_emits_result_success(self):
+        """下载成功：worker 经信号发回 ("ok", 路径)，主线程弹引导。"""
+        from unittest import mock as _mock
+        from ui.components import update_flow as uf
+        with _mock.patch.object(uf, "download_file") as dl_mock:
+            with _mock.patch.object(uf, "verify_zip_integrity") as vz_mock:
+                worker = uf._DownloadWorker(
+                    "https://example.com/pkg.zip", Path("/tmp/up_test/x.zip"),
+                )
+                results: list = []
+                worker.done.connect(results.append)
+                worker.run()
+        dl_mock.assert_called_once()
+        vz_mock.assert_called_once()
+        self.assertEqual(results, [("ok", "/tmp/up_test/x.zip")])
+
+    def test_download_worker_emits_result_failure(self):
+        """下载失败：worker 发回 ("error", ...) 并清理半成品，UI 弹 warning。"""
+        from unittest import mock as _mock
+        from ui.components import update_flow as uf
+        with _mock.patch.object(uf, "download_file") as dl_mock:
+            dl_mock.side_effect = uf.UpdaterError("网络异常")
+            with _mock.patch.object(uf.Path, "unlink") as unlink_mock:
+                worker = uf._DownloadWorker(
+                    "https://example.com/pkg.zip", Path("/tmp/up_test/x.zip"),
+                )
+                results: list = []
+                worker.done.connect(results.append)
+                worker.run()
+        self.assertEqual(results, [("error", "网络异常")])
+        self.assertTrue(unlink_mock.called)  # 半成品被清理

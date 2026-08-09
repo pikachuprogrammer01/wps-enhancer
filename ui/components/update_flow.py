@@ -5,7 +5,6 @@
 手动检查（设置页）失败弹窗提示。
 """
 
-import threading
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -182,6 +181,44 @@ def _handle_result(parent: QWidget, result: tuple, silent: bool,
     _start_download(parent, info)
 
 
+class _DownloadWorker(QObject):
+    """后台下载更新包的 worker（QThread 内执行，结果经信号回主线程）。
+
+    与 _UpdateWorker 同模式：禁止在 worker 线程用 QTimer/UI——
+    QTimer.singleShot 从子线程调用会把回调注册到子线程（无事件循环），
+    永不触发；必须用 pyqtSignal 跨线程 QueuedConnection 回主线程。
+    """
+
+    done = pyqtSignal(tuple)
+
+    def __init__(self, url: str, dest: Path) -> None:
+        super().__init__()
+        self._url = url
+        self._dest = dest
+
+    def run(self) -> None:
+        try:
+            download_file(self._url, self._dest)
+            verify_zip_integrity(self._dest)  # 坏包直接拦截，避免替换损坏的更新包
+            result: tuple = ("ok", str(self._dest))
+        except UpdaterError as e:
+            get_logger("ui.update_flow").warning(f"下载更新包失败：{e}")
+            self._cleanup()
+            result = ("error", str(e))
+        except Exception as e:  # 兜底：任何异常都不允许线程静默卡死
+            get_logger("ui.update_flow").exception(f"下载更新包异常：{e}")
+            self._cleanup()
+            result = ("error", f"下载更新包异常：{e}")
+        self.done.emit(result)
+
+    def _cleanup(self) -> None:
+        """清理损坏的半成品压缩包（失败不影响主流程）。"""
+        try:
+            self._dest.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _start_download(parent: QWidget, info: ReleaseInfo) -> None:
     """后台下载更新包到下载目录（下载前立即提示，完成后弹替换引导）。"""
     if not info.zip_url:
@@ -207,23 +244,25 @@ def _start_download(parent: QWidget, info: ReleaseInfo) -> None:
     except Exception:  # 提示失败不影响下载主流程
         get_logger("ui.update_flow").exception("下载开始提示失败")
 
-    def worker() -> None:
-        try:
-            download_file(info.zip_url, dest)
-            verify_zip_integrity(dest)  # 坏包直接拦截，避免替换损坏的更新包
-            result: tuple = ("ok", str(dest))
-        except UpdaterError as e:
-            get_logger("ui.update_flow").warning(f"下载更新包失败：{e}")
-            try:
-                dest.unlink(missing_ok=True)  # 清理损坏的半成品
-            except OSError:
-                pass
-            result = ("error", str(e))
-        QTimer.singleShot(
-            0, lambda: _handle_download_done(parent, result),
-        )
+    # 结果必须经信号回主线程再弹窗（worker 线程无事件循环，直接调 UI 无效）
+    thread = QThread()
+    worker = _DownloadWorker(url=info.zip_url, dest=dest)
+    worker.moveToThread(thread)
+    thread.started.connect(worker.run)
+    worker.done.connect(lambda r: _handle_download_done(parent, r))
+    worker.done.connect(thread.quit)
+    worker.done.connect(worker.deleteLater)
+    thread.finished.connect(thread.deleteLater)
+    _ACTIVE_THREADS.append((thread, worker))  # 持有引用防 GC
 
-    threading.Thread(target=worker, daemon=True).start()
+    def _release() -> None:
+        try:
+            _ACTIVE_THREADS.remove((thread, worker))
+        except ValueError:
+            pass
+
+    thread.finished.connect(_release)
+    thread.start()
 
 
 def _resolve_download_dir() -> Path:
