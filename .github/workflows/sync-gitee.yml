@@ -27,7 +27,9 @@ jobs:
             echo "::warning::未配置 GITEE_TOKEN，跳过 Gitee 同步（配置方法见 README）"
             exit 0
           fi
-          git remote add gitee "https://oauth2:${GITEE_TOKEN}@gitee.com/pikachuprogrammer01/wps-enhancer.git"
+          # Gitee HTTPS 认证：用户名:私人令牌（Basic Auth，令牌当密码）。
+          # 注意：oauth2:<token> 是 GitLab 写法，Gitee 官方文档不支持。
+          git remote add gitee "https://pikachuprogrammer01:${GITEE_TOKEN}@gitee.com/pikachuprogrammer01/wps-enhancer.git"
           # force-with-lease：Gitee 侧如有手工修改会拒绝推送（不覆盖他人改动）
           git push gitee main --force-with-lease
           echo "已同步到 Gitee：$(git rev-parse --short HEAD)"
