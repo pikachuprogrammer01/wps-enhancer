@@ -332,7 +332,51 @@ class UpdateFlowUiTest(unittest.TestCase):
             self.assertTrue(warn.called, "超时必须弹提示")
             self.assertIn("超时", warn.call_args[0][2])
         finally:
-            blocked.set()
+            blocked.set()  # 释放挂起的 worker，让 QThread 自然退出（避免析构 warning）
+            for t, _ in list(update_flow._ACTIVE_THREADS):
+                t.wait(2)
+            parent.close()
+
+    def test_check_update_success_roundtrip(self):
+        """worker 结果经信号回主线程（回归：线程内 QTimer 永不触发的 bug）。
+
+        旧实现用 threading.Thread + 线程内 QTimer.singleShot：timer 在线程内
+        创建（无事件循环）永不触发 → 结果回不到主线程 → 兜底误报超时。
+        """
+        from ui.components import update_flow
+
+        # 清理前序测试可能残留的检查线程（异步泄漏会污染 mock 计数）
+        for t, _ in list(update_flow._ACTIVE_THREADS):
+            t.wait(3)
+
+        done: list = []
+        parent = QtWidgets.QWidget()
+        try:
+            with mock.patch.object(
+                update_flow, "check_latest_release",
+                return_value=mock.MagicMock(tag_name="v9.9.9"),
+            ) as m, mock.patch.object(
+                QtWidgets.QMessageBox, "information",
+            ), mock.patch.object(
+                QtWidgets.QMessageBox, "warning",
+            ), mock.patch.object(
+                QtWidgets.QMessageBox, "question",
+            ):
+                update_flow.check_update_now(
+                    parent, silent_on_failure=False,
+                    on_done=lambda: done.append(True), timeout_ms=3000,
+                )
+                deadline = time.time() + 5
+                while not done and time.time() < deadline:
+                    self.app.processEvents()
+                    time.sleep(0.02)
+            self.assertEqual(
+                done, [True], "worker 结果必须回主线程（不得靠兜底误报）",
+            )
+            self.assertTrue(m.called, "check_latest_release 必须被调用")
+        finally:
+            for t, _ in list(update_flow._ACTIVE_THREADS):
+                t.wait(2)
             parent.close()
 
     def test_system_proxy_macos(self):

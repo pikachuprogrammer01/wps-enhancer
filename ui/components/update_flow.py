@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
 from core.logger import get_logger
@@ -25,6 +25,11 @@ _REPLACE_GUIDE_MAC = (
     "2. 解压 zip，把新的 WPS增强工具.app 拖到「{install_dir}」覆盖旧版\n"
     "3. 若提示「无法验证开发者」，请右键点按 App → 打开\n"
 )
+# 持有运行中的 QThread 引用，防止 Python GC 析构运行中线程
+# （Qt 不持有 QThread，局部引用随 check_update_now 返回即失效）。
+_ACTIVE_THREADS: list = []
+
+
 _REPLACE_GUIDE_WIN = (
     "替换方法：\n"
     "1. 完全退出 WPS 增强工具\n"
@@ -59,6 +64,37 @@ def _resolve_install_dir() -> str:
     return "/Applications"
 
 
+class _UpdateWorker(QObject):
+    """后台检查更新的 worker（QThread 内执行，结果经信号回主线程）。
+
+    禁止在 worker 线程使用 QTimer/UI——Qt 对象线程相关，非主线程无事件循环。
+    """
+
+    done = pyqtSignal(tuple)
+
+    def __init__(self, use_proxy: bool, update_url: Optional[str]) -> None:
+        super().__init__()
+        self._use_proxy = use_proxy
+        self._update_url = update_url
+
+    def run(self) -> None:
+        try:
+            result: tuple = (
+                "ok",
+                check_latest_release(
+                    use_system_proxy=self._use_proxy,
+                    update_url=self._update_url,
+                ),
+            )
+        except UpdaterError as e:
+            get_logger("ui.update_flow").warning(f"检查更新失败：{e}")
+            result = ("error", str(e))
+        except Exception as e:  # 兜底：任何异常都不允许线程静默卡死
+            get_logger("ui.update_flow").exception(f"检查更新异常：{e}")
+            result = ("error", f"检查更新异常：{e}")
+        self.done.emit(result)
+
+
 def check_update_now(parent: QWidget, silent_on_failure: bool,
                      on_done: Optional[Callable[[], None]] = None,
                      timeout_ms: int = 18000,
@@ -81,29 +117,35 @@ def check_update_now(parent: QWidget, silent_on_failure: bool,
         done["ok"] = True
         _handle_result(parent, result, silent_on_failure, on_done)
 
-    def worker() -> None:
-        try:
-            result: tuple = (
-                "ok",
-                check_latest_release(
-                    use_system_proxy=use_proxy, update_url=update_url,
-                ),
-            )
-        except UpdaterError as e:
-            get_logger("ui.update_flow").warning(f"检查更新失败：{e}")
-            result = ("error", str(e))
-        except Exception as e:  # 兜底：任何异常都不允许线程静默卡死
-            get_logger("ui.update_flow").exception(f"检查更新异常：{e}")
-            result = ("error", f"检查更新异常：{e}")
-        QTimer.singleShot(0, lambda: _finish(result))
-
     def _guard() -> None:
         if not done["ok"]:
-            get_logger("ui.update_flow").warning("检查更新超时（15s 兜底）")
+            get_logger("ui.update_flow").warning(
+                f"检查更新超时（{timeout_ms // 1000}s 兜底）",
+            )
             _finish(("error", "检查超时，请检查网络连接后重试"))
 
+    # 旧实现用 threading.Thread + 线程内 QTimer.singleShot：timer 在线程内
+    # 创建（无事件循环）永不触发 → 结果回不到主线程 → 兜底误报超时。
+    # 改用 QThread + pyqtSignal：QueuedConnection 跨线程安全回到主线程。
+    thread = QThread()
+    worker = _UpdateWorker(use_proxy=use_proxy, update_url=update_url)
+    worker.moveToThread(thread)
+    thread.started.connect(worker.run)
+    worker.done.connect(_finish)      # 跨线程 QueuedConnection → 主线程
+    worker.done.connect(thread.quit)
+    worker.done.connect(worker.deleteLater)
+    thread.finished.connect(thread.deleteLater)
+    _ACTIVE_THREADS.append((thread, worker))  # 持有引用防 GC（PyQt 信号不持有 receiver）
+
+    def _release() -> None:
+        try:
+            _ACTIVE_THREADS.remove((thread, worker))
+        except ValueError:
+            pass
+
+    thread.finished.connect(_release)
     QTimer.singleShot(timeout_ms, _guard)
-    threading.Thread(target=worker, daemon=True).start()
+    thread.start()
 
 
 def _handle_result(parent: QWidget, result: tuple, silent: bool,
