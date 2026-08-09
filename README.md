@@ -94,7 +94,7 @@ app 默认更新源为 **Gitee 镜像**（`https://gitee.com/pikachuprogrammer01
 
 **全自动同步（推荐，秒级）**：仓库已内置 workflow（`.github/workflows/sync-gitee.yml`），**每次 push main 自动推送到 Gitee**，无需手动点同步。启用只需一次性配置 token：
 
-1. **Gitee 生成私人令牌**：Gitee 头像 → 设置 → 安全设置 → 私人令牌 → 生成新令牌（勾选 `projects` 权限）→ 复制
+1. **Gitee 生成私人令牌**：Gitee 头像 → 设置 → 安全设置 → 私人令牌 → 生成新令牌 → **权限只勾选 `projects`（仓库），其余全部不勾**（推送代码唯一必需权限；user/groups/issues/hooks 等一律不需要）→ 有效期建议 90 天或永久 → 复制
 2. **GitHub 添加 Secret**：仓库 Settings → Secrets and variables → Actions → New repository secret → 名称填 `GITEE_TOKEN`，值粘贴令牌
 3. 下次 push 即自动同步；未配置 token 时 workflow 会跳过并提示（不影响其他流程）
 
