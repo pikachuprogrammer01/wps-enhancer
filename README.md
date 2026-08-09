@@ -90,7 +90,7 @@ app 默认更新源为 **Gitee 镜像**（`https://gitee.com/pikachuprogrammer01
 **Gitee 仓库准备（一次性）**：
 
 1. Gitee 新建仓库 → 选择「从 GitHub 导入」（Gitee 设置 → 账号绑定中先绑定 GitHub）→ 导入 `wps-enhancer`
-2. **删除镜像配置**：仓库 → 「管理」 → 「镜像仓库」 → 删除 GitHub 镜像源——Gitee 镜像仓库是**单向同步且禁止 push**（CI 自动推送会被拒绝），删除后变普通仓库，由 CI 全自动接管同步
+2. 确认仓库为普通仓库即可（若导入时勾选了"自动同步/镜像"，请到仓库管理页解除——Gitee 镜像仓库单向同步且可能禁止 push，由 CI 全自动接管更可靠）
 
 **全自动同步（秒级）**：仓库已内置 workflow（`.github/workflows/sync-gitee.yml`），**每次 push main 自动推送到 Gitee**，无需手动点同步。启用只需一次性配置 token：
 
