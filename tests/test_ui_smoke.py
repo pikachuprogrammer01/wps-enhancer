@@ -12,6 +12,17 @@ from PyQt6.QtWidgets import QApplication
 class UiSmokeTest(unittest.TestCase):
     """UI 冒烟测试：面板/设置对话框/主窗口可实例化（offscreen）。"""
 
+    def setUp(self):
+        """注入默认设置缓存：隔离用户真实 settings.json（字段数/值可能不同）。"""
+        import core.settings as cs
+        from core.settings import AppSettings
+        self._orig_cache = cs._cache
+        cs._cache = AppSettings()
+
+    def tearDown(self):
+        import core.settings as cs
+        cs._cache = self._orig_cache
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -92,9 +103,15 @@ class UiSmokeTest(unittest.TestCase):
         self.assertIsNotNone(mod.Panel)
 
     def test_default_template_from_builtins(self):
+        from unittest import mock
+        from core.settings import AppSettings
         from features.contacts_import.panel import ContactsImportPanel
-        panel = ContactsImportPanel()
-        t = panel._get_default_template()
+        with mock.patch(
+            "features.contacts_import.panel.get_app_settings",
+            return_value=AppSettings(),
+        ):
+            panel = ContactsImportPanel()
+            t = panel._get_default_template()
         self.assertEqual(
             [c.key for c in t.columns],
             ["name", "phone", "company", "website"],
@@ -106,18 +123,22 @@ class UiSmokeTest(unittest.TestCase):
         import tempfile
         from unittest import mock
         from core.file_io.base import SheetData
+        from core.settings import AppSettings
         from features.contacts_import.panel import ContactsImportPanel
 
-        panel = ContactsImportPanel()
-        panel._sheet_data = SheetData(
-            sheet_name="s", headers=["姓名", "手机号"],
-            rows=[{"姓名": "张三", "手机号": "138"}],
-        )
         empty_dir = Path(tempfile.mkdtemp(prefix="wps_empty_tpl_"))
         with mock.patch(
             "features.contacts_import.panel.get_templates_dir",
             return_value=empty_dir,
+        ), mock.patch(
+            "features.contacts_import.panel.get_app_settings",
+            return_value=AppSettings(),
         ):
+            panel = ContactsImportPanel()
+            panel._sheet_data = SheetData(
+                sheet_name="s", headers=["姓名", "手机号"],
+                rows=[{"姓名": "张三", "手机号": "138"}],
+            )
             panel._reload_templates()
             panel._auto_template_decision(panel._sheet_data.headers)
         # 无模板不阻断：显示「暂无模板」提示，自动应用默认映射
@@ -271,27 +292,31 @@ class UiSmokeTest(unittest.TestCase):
         import tempfile
         from unittest import mock
         from core.file_io.base import SheetData
-        from core.settings import get_app_settings, reset_settings_cache
+        from core.settings import AppSettings
         from features.contacts_import.panel import ContactsImportPanel
 
-        reset_settings_cache()
-        panel = ContactsImportPanel()
-        panel._sheet_data = SheetData(
-            sheet_name="s", headers=["姓名", "手机号"],
-            rows=[{"姓名": "张三", "手机号": "13800000000"}],
-        )
+        settings = AppSettings()  # 默认设置（隔离用户真实设置）
+        settings.vcf_name_prefix = "客户-"
+        settings.vcf_name_suffix = "-VIP"
+        settings.vcf_timestamp = False  # 关闭时间戳，聚焦前缀/字段断言
+        import core.settings as cs
+        cs._cache = settings  # 写回缓存：预览等模块通过 get_app_settings 读取
         empty_dir = Path(tempfile.mkdtemp(prefix="wps_pv_"))
         with mock.patch(
             "features.contacts_import.panel.get_templates_dir",
             return_value=empty_dir,
+        ), mock.patch(
+            "features.contacts_import.panel.get_app_settings",
+            return_value=settings,
         ):
+            panel = ContactsImportPanel()
+            panel._sheet_data = SheetData(
+                sheet_name="s", headers=["姓名", "手机号"],
+                rows=[{"姓名": "张三", "手机号": "13800000000"}],
+            )
             panel._reload_templates()
             panel._auto_template_decision(panel._sheet_data.headers)
-        settings = get_app_settings()
-        settings.vcf_name_prefix = "客户-"
-        settings.vcf_name_suffix = "-VIP"
-        settings.vcf_timestamp = False  # 关闭时间戳，聚焦前缀/字段断言
-        panel._format_combo.setCurrentText("vcf")
+            panel._format_combo.setCurrentText("vcf")
         panel._refresh_preview()
         # vcf 为文本预览：内容与导出文件一致（含前后缀、字段过滤）
         text = panel._preview_text.toPlainText()
