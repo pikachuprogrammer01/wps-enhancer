@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 全量历史：changelog 需要完整区间（浅克隆下 git log 只剩 tag 自身 commit）
+          fetch-depth: 0
 
       - name: Verify version consistency
         # 强制 tag 与 core/version.py 一致：tag v1.0.1 必须对应 APP_VERSION=1.0.1，
@@ -66,7 +69,10 @@ jobs:
           gh release delete "$TAG" --yes 2>/dev/null || true
 
       - name: Generate changelog body
-        # 从上一个 tag 到当前 tag 的 commit 自动生成 Release 描述（conventional commits 分节）
+        # 从上一个 tag 到当前 tag 的 commit 自动生成 Release 描述。
+        # 仅用户可见变更进描述：feat（新特性）/ fix（问题修复）；
+        # ci/chore/docs/build 等内部变更自动过滤（含 fix(ci) 这类构建 scope），
+        # 版本描述只体现 bug 修复与新特性，不掺构建流程内容。
         id: changelog
         run: |
           TAG="${{ inputs.tag_name || github.ref_name }}"
@@ -76,15 +82,13 @@ jobs:
           else
             RANGE="HEAD"  # 首个发布：取全部提交
           fi
-          # 先取 %s 再按标题去重（awk 保序）：同标题的重复 commit（如历史重写/重复推送）只留一条
-          FEAT=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
-          FIX=$(git log "$RANGE" --pretty=format:"%s" --grep="^fix" --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
-          OTHER=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" --grep="^fix" --invert-grep --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
+          # 先取 %s → 过滤构建类 scope → 按标题去重（awk 保序）
+          FEAT=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" --no-merges | grep -vE "^feat\((ci|build|workflow|release)\)" | awk '!seen[$0]++ {print "- " $0}' || true)
+          FIX=$(git log "$RANGE" --pretty=format:"%s" --grep="^fix" --no-merges | grep -vE "^fix\((ci|build|workflow|release)\)" | awk '!seen[$0]++ {print "- " $0}' || true)
           BODY=""
           if [ -n "$FEAT" ]; then printf -v BODY '%s## ✨ 新特性\n\n%s\n\n' "$BODY" "$FEAT"; fi
           if [ -n "$FIX" ]; then printf -v BODY '%s## 🐛 问题修复\n\n%s\n\n' "$BODY" "$FIX"; fi
-          if [ -n "$OTHER" ]; then printf -v BODY '%s## 🔧 其他变更\n\n%s\n' "$BODY" "$OTHER"; fi
-          if [ -z "$BODY" ]; then BODY="无变更记录。"; fi
+          if [ -z "$BODY" ]; then BODY="本次更新无用户可见变更。"; fi
           EOF=$(openssl rand -hex 16)
           {
             echo "body<<$EOF"
