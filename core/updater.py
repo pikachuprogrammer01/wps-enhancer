@@ -12,6 +12,7 @@ import platform
 import re
 import ssl
 import subprocess
+import time
 import urllib.error
 import urllib.request
 
@@ -27,6 +28,8 @@ from core.logger import get_logger, log_call
 REPO = "pikachuprogrammer01/wps-enhancer"
 _UA = "wps-enhancer-updater/1.0"
 _DEFAULT_TIMEOUT = 8
+# 下载失败重试退避（秒）
+_BACKOFF = (1, 3, 7)
 # 网页端 Release 页的 tag 链接，如 /owner/repo/releases/tag/v1.0.2
 _HTML_TAG_RE = re.compile(r"/releases/tag/(v[\d.]+)")
 # 资产文件名的平台段原始大小写（CI 产物名：WPSEnhancer-macOS-*.zip）
@@ -356,20 +359,34 @@ def _current_arch() -> str:
 
 @log_call("core.updater", log_args=False)
 def download_file(url: str, dest: Path, timeout: int = 30,
-                  use_system_proxy: bool = True) -> Path:
-    """流式下载 url 到 dest（覆盖），返回 dest；失败抛 UpdaterError。"""
+                  use_system_proxy: bool = True,
+                  retries: int = 3) -> Path:
+    """流式下载 url 到 dest（覆盖），返回 dest；失败抛 UpdaterError。
+
+    retries：网络抖动自动重试次数（1s/3s/7s 退避），失败后重试自恢复。
+    重试之间使用短退避，避免雪崩；全部重试耗尽才报错。
+    """
     if use_system_proxy:
         _apply_system_proxy()  # 下载同样走系统代理
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     context = ssl.create_default_context(cafile=certifi.where())
-    try:
-        with urllib.request.urlopen(req, timeout=timeout, context=context) as resp, \
-                open(dest, "wb") as f:
-            while True:
-                chunk = resp.read(64 * 1024)
-                if not chunk:
-                    break
-                f.write(chunk)
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise UpdaterError(f"下载更新包失败：{e}") from e
-    return dest
+    last_err: Exception = None
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout,
+                                        context=context) as resp, \
+                    open(dest, "wb") as f:
+                while True:
+                    chunk = resp.read(64 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            return dest
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            last_err = e
+            if attempt < retries:
+                get_logger("core.updater").warning(
+                    f"下载失败（第 {attempt + 1} 次），{_BACKOFF[attempt]}s 后重试：{e}",
+                )
+                time.sleep(_BACKOFF[attempt])
+    raise UpdaterError(f"下载更新包失败：{last_err}") from last_err

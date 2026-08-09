@@ -115,6 +115,30 @@ app 默认更新源为 **Gitee 镜像**（`https://gitee.com/pikachuprogrammer01
 
 > ⚠️ 当前 app 为 ad-hoc 签名，从 GitHub 下载的 .app 首次打开需右键 → 打开（或 `xattr -d com.apple.quarantine <路径>`）绕过 Gatekeeper。
 
+### 更新机制架构（零维护设计）
+
+**设计目标**：发布者只提交 GitHub，其余全自动；用户端零操作；任何单点故障都有自动兜底。
+
+```
+检查更新（三通道，自动逐级回退）
+  ├─ ① Gitee raw update.json（默认，国内可达；CI 发布时自动生成推回 main，镜像同步）
+  ├─ ② GitHub API（api.github.com，8s 超时）
+  └─ ③ GitHub 网页端（github.com/releases/latest，fastly CDN）
+
+下载更新包（自动重试 3 次，1s/3s/7s 退避）
+  └─ GitHub Releases 直链（CI 自动上传；抖动自动重试自恢复）
+     （可选优化：Gitee 发行版手动传 zip 后改 update.json 的 urls 走国内下载）
+```
+
+**可维护性/可扩展性要点**：
+
+- **更新源配置驱动**：app 端唯一入口是「设置 → 更新 → 自定义更新源」（默认 Gitee，可改可清空），更换/新增更新源**不需要改代码**
+- **update.json 格式即契约**：`version` + `urls`（平台-架构映射）+ `notes`；新增平台（如 linux）只需在 `urls` 加一个键，检查代码自动支持
+- **错误语义明确**：配置错误（非 JSON / 缺字段）直接提示不静默回退；仅"源不可达"才回退下一通道——排障时一眼看出是配置问题还是网络问题
+- **纯标准库**：检查/下载只依赖 urllib + certifi，无第三方运行时依赖；CI 生成 update.json 只依赖 git + python3
+
+**已知边界（诚实说明）**：外部服务（GitHub/Gitee）无法保证 100% 可用；三通道检查 + 下载重试覆盖了绝大多数场景，若 GitHub 与 Gitee 同时不可达，app 会明确提示"检查更新失败"而不是卡死（UI 兜底 18s 保证状态复位）。
+
 ### 验证打包产物
 
 1. 运行：`open "dist/WPS增强工具.app"`

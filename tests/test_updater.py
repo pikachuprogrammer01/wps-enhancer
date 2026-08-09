@@ -2,6 +2,7 @@
 
 import threading
 import time
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -540,3 +541,35 @@ class CustomUpdateSourceTest(unittest.TestCase):
                     platform="windows", arch="x86_64",
                 )
         self.assertIn("windows-x86_64", str(ctx.exception))
+
+
+class DownloadRetryTest(unittest.TestCase):
+    """下载失败自动重试：抖动恢复 / 重试耗尽报错。"""
+
+    def test_download_retry_succeeds(self):
+        """第一次失败第二次成功：重试后返回 dest，不报错。"""
+        from urllib.error import URLError
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pkg.zip"
+            with mock.patch("core.updater.urllib.request.urlopen") as urlopen, \
+                    mock.patch("core.updater.time.sleep"):
+                resp = mock.MagicMock()
+                resp.read.return_value = b""
+                resp.__enter__.return_value = resp
+                urlopen.side_effect = [URLError("flaky"), resp]
+                result = download_file("https://x/pkg.zip", dest, retries=1)
+            self.assertEqual(result, dest)
+            self.assertEqual(urlopen.call_count, 2)
+
+    def test_download_retry_exhausted(self):
+        """全部重试失败：抛 UpdaterError（含最后错误原因）。"""
+        from urllib.error import URLError
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pkg.zip"
+            with mock.patch("core.updater.urllib.request.urlopen") as urlopen, \
+                    mock.patch("core.updater.time.sleep"):
+                urlopen.side_effect = [URLError("down")] * 3
+                with self.assertRaises(UpdaterError) as ctx:
+                    download_file("https://x/pkg.zip", dest, retries=2)
+            self.assertIn("下载更新包失败", str(ctx.exception))
+            self.assertEqual(urlopen.call_count, 3)
