@@ -2,7 +2,7 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font
 from typing import List
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from core.file_io.base import (
     BaseReader, BaseWriter, SheetData, WriteRequest,
@@ -23,6 +23,17 @@ class XlsxReader(BaseReader):
             return wb.sheetnames
         except Exception as e:
             raise FileReadError(f"无法读取文件 '{file_path}'：{type(e).__name__}: {e}") from e
+
+    @log_call("core.file_io.xlsx", log_args=True)
+    def get_sheet_summaries(self, file_path: str) -> List[Tuple[str, int]]:
+        """读取所有 Sheet 的名称与数据行数（max_row，含空尾行的近似值）。"""
+        try:
+            wb = openpyxl.load_workbook(file_path, data_only=True)
+            return [(ws.title, ws.max_row) for ws in wb.worksheets]
+        except Exception as e:
+            raise FileReadError(
+                f"无法读取文件 '{file_path}'：{type(e).__name__}: {e}"
+            ) from e
 
     @log_call("core.file_io.xlsx", log_args=True)
     def read_sheet(

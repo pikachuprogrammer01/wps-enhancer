@@ -735,3 +735,66 @@ class UiSmokeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_sheet_combo_shows_name_and_rows(self):
+        """sheet 下拉显示「名称（N 行）」，data 存真实 sheet 名。"""
+        from unittest import mock
+        from features.contacts_import.panel import ContactsImportPanel
+        panel = ContactsImportPanel()
+        try:
+            with mock.patch(
+                "features.contacts_import.panel.get_reader",
+            ) as reader:
+                reader.return_value.get_sheet_summaries.return_value = [
+                    ("1", 235), ("通讯录", 120),
+                ]
+                panel._on_file_selected("/tmp/x.xlsx")
+            self.assertEqual(panel._sheet_combo.count(), 2)
+            self.assertEqual(panel._sheet_combo.itemText(0), "1（235 行）")
+            self.assertEqual(panel._sheet_combo.itemData(0), "1")
+            self.assertEqual(panel._sheet_combo.itemText(1), "通讯录（120 行）")
+        finally:
+            panel.close()
+
+    def test_truncation_prompt_yes_continues(self):
+        """截断提醒选「继续」后流程不受阻断。"""
+        from unittest import mock
+        from PyQt6.QtWidgets import QMessageBox
+        from features.contacts_import.panel import ContactsImportPanel
+        from features.contacts_import import processor as proc
+        panel = ContactsImportPanel()
+        try:
+            from core.file_io.base import SheetData
+            data = SheetData(
+                sheet_name="s", headers=["号码"],
+                rows=[{"号码": "1.38123E+10"}],
+            )
+            with mock.patch.object(
+                QMessageBox, "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ), mock.patch.object(panel, "_status_bar") as sb:
+                panel._check_truncated_numbers(data)
+            self.assertFalse(sb.show_warning.called)  # 未中止
+        finally:
+            panel.close()
+
+    def test_truncation_prompt_no_warns(self):
+        """截断提醒选「中止」后给出指引提示。"""
+        from unittest import mock
+        from PyQt6.QtWidgets import QMessageBox
+        from features.contacts_import.panel import ContactsImportPanel
+        panel = ContactsImportPanel()
+        try:
+            from core.file_io.base import SheetData
+            data = SheetData(
+                sheet_name="s", headers=["号码"],
+                rows=[{"号码": "110101199003070000"}],
+            )
+            with mock.patch.object(
+                QMessageBox, "question",
+                return_value=QMessageBox.StandardButton.No,
+            ), mock.patch.object(panel, "_status_bar") as sb:
+                panel._check_truncated_numbers(data)
+            self.assertTrue(sb.show_warning.called)
+        finally:
+            panel.close()

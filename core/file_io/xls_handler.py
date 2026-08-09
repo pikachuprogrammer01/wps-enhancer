@@ -1,6 +1,6 @@
 import xlrd
 import xlwt
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from core.file_io.base import (
     BaseReader, BaseWriter, SheetData, WriteRequest,
@@ -21,6 +21,20 @@ class XlsReader(BaseReader):
             return wb.sheet_names()
         except Exception as e:
             raise FileReadError(f"无法读取文件 '{file_path}'：{type(e).__name__}: {e}") from e
+
+    @log_call("core.file_io.xls", log_args=True)
+    def get_sheet_summaries(self, file_path: str) -> List[Tuple[str, int]]:
+        """读取所有 Sheet 的名称与数据行数（nrows）。"""
+        try:
+            wb = xlrd.open_workbook(file_path)
+            return [
+                (wb.sheet_names()[i], wb.sheet_by_index(i).nrows)
+                for i in range(wb.nsheets)
+            ]
+        except Exception as e:
+            raise FileReadError(
+                f"无法读取文件 '{file_path}'：{type(e).__name__}: {e}"
+            ) from e
 
     @log_call("core.file_io.xls", log_args=True)
     def read_sheet(

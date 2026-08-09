@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
@@ -29,6 +30,35 @@ class PreviewData:
 
 # 规则二允许的手机号第二位字符
 _VALID_SECOND_DIGITS = {'3', '4', '5', '6', '7', '8', '9'}
+
+# 数字截断/补零检测：科学计数法 / 长数字尾补零
+_SCI_RE = re.compile(r"^[-+]?\d+(\.\d+)?[eE][-+]?\d+$")
+_LONG_ZERO_RE = re.compile(r"^\d{15,}0{3,}$")
+
+
+def detect_truncated_numbers(sheet_data: "SheetData") -> List[str]:
+    """检测疑似数字截断/补零的单元格（手机号/身份证精度丢失）。
+
+    两种特征（宁可漏检不误判）：
+    1. 科学计数法文本（如 1.38123E+10）——浮点精度丢失的铁证
+    2. 15 位以上纯数字且末尾连续 3+ 个 0——长数字补零特征
+    返回每列一条提示文本，无问题返回空列表。
+    """
+    hints: List[str] = []
+    for col in sheet_data.headers:
+        samples: List[str] = []
+        for row in sheet_data.rows:
+            value = str(row.get(col, "")).strip()
+            if _SCI_RE.match(value) or _LONG_ZERO_RE.match(value):
+                samples.append(value[:20])
+                if len(samples) >= 3:
+                    break
+        if samples:
+            hints.append(
+                f"列「{col}」：如 {', '.join(samples)}…"
+                "（疑似号码/身份证被截断补零）"
+            )
+    return hints
 
 
 def validate_phone(phone: str) -> bool:

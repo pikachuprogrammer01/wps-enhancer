@@ -369,3 +369,41 @@ class WriteRequestTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TruncatedNumberTest(unittest.TestCase):
+    """数字截断/补零检测（科学计数法、长数字尾补零）。"""
+
+    def _data(self, rows):
+        from core.file_io.base import SheetData
+        return SheetData(
+            sheet_name="s", headers=["号码", "姓名"],
+            rows=[{"号码": v, "姓名": n} for v, n in rows],
+        )
+
+    def test_detect_scientific_notation(self):
+        from features.contacts_import.processor import detect_truncated_numbers
+        data = self._data([
+            ("1.38123E+10", "张三"),
+            ("13800000000", "李四"),
+        ])
+        hints = detect_truncated_numbers(data)
+        self.assertEqual(len(hints), 1)
+        self.assertIn("号码", hints[0])
+
+    def test_detect_long_zero_tail(self):
+        from features.contacts_import.processor import detect_truncated_numbers
+        data = self._data([("110101199003070000", "张三")])  # 18 位尾补零
+        hints = detect_truncated_numbers(data)
+        self.assertEqual(len(hints), 1)
+
+    def test_normal_data_no_false_positive(self):
+        from features.contacts_import.processor import detect_truncated_numbers
+        # 正常手机号（11 位）、正常 18 位文本身份证（不以 000 结尾）、普通数字
+        data = self._data([
+            ("13812345678", "张三"),
+            ("110101199003071234", "李四"),
+            ("100", "王五"),
+            ("", "空"),
+        ])
+        self.assertEqual(detect_truncated_numbers(data), [])

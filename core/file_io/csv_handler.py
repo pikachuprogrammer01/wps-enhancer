@@ -1,7 +1,7 @@
 import csv
 import io
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from core.exceptions import FileReadError, FileWriteError
 from core.file_io.base import (
@@ -40,6 +40,17 @@ class CsvReader(BaseReader):
     def get_sheet_names(self, file_path: str) -> List[str]:
         """返回单个伪 Sheet 名称（文件名不含扩展名）。"""
         return [Path(file_path).stem]
+
+    @log_call("core.file_io.csv")
+    def get_sheet_summaries(self, file_path: str) -> List[Tuple[str, int]]:
+        """返回单个伪 Sheet（文件名不含扩展名 + 二进制行数近似）。"""
+        rows = 0
+        try:
+            with open(file_path, "rb") as f:
+                rows = sum(1 for _ in f)
+        except OSError:
+            rows = 0
+        return [(Path(file_path).stem, rows)]
 
     @log_call("core.file_io.csv")
     def read_sheet(

@@ -387,3 +387,33 @@ class UnsupportedFormatTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SheetSummariesTest(unittest.TestCase):
+    """get_sheet_summaries：多 sheet 名称+行数（下拉区分纯数字 sheet）。"""
+
+    def test_xlsx_multi_sheet_summaries(self):
+        import openpyxl
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "multi.xlsx"
+            wb = openpyxl.Workbook()
+            ws1 = wb.active
+            ws1.title = "1"
+            ws1.append(["姓名", "手机"])
+            ws1.append(["张三", "13800000000"])
+            ws2 = wb.create_sheet("联系人")
+            ws2.append(["姓名"])
+            ws2.append(["李四"])
+            ws2.append(["王五"])
+            wb.save(path)
+            summaries = get_reader(str(path)).get_sheet_summaries(str(path))
+        self.assertEqual(summaries, [("1", 2), ("联系人", 3)])
+
+    def test_csv_single_sheet_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "data.csv"
+            path.write_text("姓名,手机\n张三,13800000000\n", encoding="utf-8")
+            summaries = get_reader(str(path)).get_sheet_summaries(str(path))
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0][0], "data")
+        self.assertGreaterEqual(summaries[0][1], 2)

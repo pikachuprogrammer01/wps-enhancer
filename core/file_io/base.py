@@ -83,6 +83,11 @@ class BaseReader(ABC):
         ...
 
     @abstractmethod
+    def get_sheet_summaries(self, file_path: str) -> List[Tuple[str, int]]:
+        """读取所有 Sheet 的名称与数据行数（下拉选择时展示，便于区分同名/纯数字 Sheet）。"""
+        ...
+
+    @abstractmethod
     def read_sheet(
         self, file_path: str, sheet_name: str,
         skip_declaration: bool = False,

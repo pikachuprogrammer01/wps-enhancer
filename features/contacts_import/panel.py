@@ -48,6 +48,7 @@ class ContactsImportPanel(
         self._manual_map: dict = {}
         self._preview = None
         self._all_rows_visible: bool = False
+        self._truncation_checked: set = set()  # 已提示过截断提醒的 sheet（每 sheet 一次）
         self._setup_ui()
         self._connect_signals()
 
@@ -182,16 +183,17 @@ class ContactsImportPanel(
     @log_call("contacts_import.panel")
     @_safe_slot
     def _on_file_selected(self, file_path: str) -> None:
-        """用户选择源文件后加载 Sheet 列表。"""
+        """用户选择源文件后加载 Sheet 列表（名称+行数，便于区分纯数字 Sheet）。"""
         self._file_path = file_path
         self._reset_data_state()
         try:
             reader = get_reader(file_path)
-            sheets = reader.get_sheet_names(file_path)
-            self._sheet_combo.addItems(sheets)
+            summaries = reader.get_sheet_summaries(file_path)
+            for name, rows in summaries:
+                self._sheet_combo.addItem(f"{name}（{rows} 行）", name)
             self._sheet_combo.setEnabled(True)
             get_logger("contacts_import.panel").info(
-                f"文件 '{file_path}' 加载成功，共 {len(sheets)} 个 Sheet"
+                f"文件 '{file_path}' 加载成功，共 {len(summaries)} 个 Sheet"
             )
         except WpsEnhancerError as e:
             self._handle_error(e)
@@ -219,8 +221,9 @@ class ContactsImportPanel(
         self._goto_step(0)
 
     @_safe_slot
-    def _on_sheet_changed(self, sheet_name: str) -> None:
-        """用户切换 Sheet 后读取数据，并加载模板列表。"""
+    def _on_sheet_changed(self, _text: str) -> None:
+        """用户切换 Sheet 后读取数据（sheet 名取自 currentData，兼容显示文本）。"""
+        sheet_name = self._sheet_combo.currentData()
         if not sheet_name:
             return
         settings = get_app_settings()
@@ -244,6 +247,7 @@ class ContactsImportPanel(
                 self._status_bar.show_warning("已检测到并跳过导出声明行")
             elif settings.declaration_detect:
                 self._status_bar.show_info("声明检测已开启")
+            self._check_truncated_numbers(data)
             self._reload_templates()
             self._auto_template_decision(data.headers)
             skip_info = "（跳过声明 1 行）" if data.declaration_skipped else ""
@@ -252,6 +256,33 @@ class ContactsImportPanel(
             )
         except WpsEnhancerError as e:
             self._handle_error(e)
+
+    def _check_truncated_numbers(self, data: "SheetData") -> None:
+        """检测疑似数字截断/补零并提示（用户可无视继续；每 sheet 只提示一次）。"""
+        from features.contacts_import.processor import detect_truncated_numbers
+        if data.sheet_name in self._truncation_checked:
+            return
+        self._truncation_checked.add(data.sheet_name)
+        hints = detect_truncated_numbers(data)
+        if not hints:
+            return
+        answer = _dlg.QMessageBox.question(
+            self, "数字截断提醒",
+            "检测到疑似号码/身份证被截断补零：\n\n"
+            + "\n".join(hints)
+            + "\n\n建议在 Excel/WPS 中将相关列设置为「文本」格式后重新导出。\n"
+            "是否仍要继续当前操作？",
+            _dlg.QMessageBox.StandardButton.Yes
+            | _dlg.QMessageBox.StandardButton.No,
+            _dlg.QMessageBox.StandardButton.Yes,
+        )
+        if answer != _dlg.QMessageBox.StandardButton.Yes:
+            get_logger("contacts_import.panel").warning(
+                f"用户选择中止：Sheet '{data.sheet_name}' 存在数字截断"
+            )
+            self._status_bar.show_warning(
+                "已中止：请将相关列设为文本格式后重新选择文件"
+            )
 
     def _auto_template_decision(self, headers: List[str]) -> None:
         """选文件后模板决策：有模板能匹配 → 等待用户选择应用；否则自动默认映射进下一步。"""
