@@ -26,11 +26,19 @@ from core.logger import log_call
 # GitHub 仓库（公开仓库无需 token）
 REPO = "pikachuprogrammer01/wps-enhancer"
 _UA = "wps-enhancer-updater/1.0"
-_DEFAULT_TIMEOUT = 5
+_DEFAULT_TIMEOUT = 8
+# 网页端 Release 页的 tag 链接，如 /owner/repo/releases/tag/v1.0.2
+_HTML_TAG_RE = re.compile(r"/releases/tag/(v[\d.]+)")
+# 资产文件名的平台段原始大小写（CI 产物名：WPSEnhancer-macOS-*.zip）
+_ASSET_PLATFORM = {"macos": "macOS", "windows": "Windows"}
 
 
 class UpdaterError(WpsEnhancerError):
     """更新检查/下载失败（网络、解析、响应异常）。"""
+
+
+class _NoRelease(UpdaterError):
+    """仓库确实没有已发布版本（404）——回退网页端也没有意义。"""
 
 
 @dataclass
@@ -122,11 +130,31 @@ def check_latest_release(
     arch：架构标签（"arm64"/"x86_64"/"x86"，默认按当前机器）。
     use_system_proxy：是否自动读取并使用系统代理（打包版无 shell 代理环境）。
     资产匹配：优先「平台+架构」精确匹配，回退「仅平台」匹配（兼容旧资产）。
+    网络策略：api.github.com 失败（非 404）自动回退 github.com 网页端
+    （fastly CDN 连通性通常更好，国内访问更稳）。
     """
     platform = platform or _current_platform()
     arch = arch or _current_arch()
     if use_system_proxy:
         _apply_system_proxy()  # 打包版无 shell 代理环境：从系统代理补上
+    try:
+        return _check_via_api(repo, timeout, platform, arch)
+    except _NoRelease:
+        raise  # 仓库确实无 Release，网页端也不会有
+    except UpdaterError as api_err:
+        # 网络不稳/超时/状态码异常 → 回退网页端（tag 提取 + 资产 URL 构造）
+        try:
+            return _check_via_html(repo, timeout, platform, arch)
+        except UpdaterError as html_err:
+            raise UpdaterError(
+                f"检查更新失败（API 与网页两种方式均不可达）：{html_err}"
+            ) from api_err
+
+
+def _check_via_api(
+    repo: str, timeout: int, platform: str, arch: str,
+) -> ReleaseInfo:
+    """通过 GitHub API 查询最新 Release（失败抛 UpdaterError）。"""
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     try:
@@ -139,7 +167,7 @@ def check_latest_release(
     except urllib.error.HTTPError as e:
         # urlopen 对 4xx/5xx 直接抛 HTTPError（不返回响应体）
         if e.code == 404:
-            raise UpdaterError("仓库暂无已发布的版本（Release）") from e
+            raise _NoRelease("仓库暂无已发布的版本（Release）") from e
         raise UpdaterError(f"GitHub API 返回状态码 {e.code}") from e
     except (urllib.error.URLError, TimeoutError) as e:
         raise UpdaterError(f"无法连接 GitHub：{e}") from e
@@ -165,6 +193,48 @@ def check_latest_release(
         zip_url=zip_url,
         zip_size=zip_size,
         published_at=str(data.get("published_at", "")),
+    )
+
+
+def _check_via_html(
+    repo: str, timeout: int, platform: str, arch: str,
+) -> ReleaseInfo:
+    """回退通道：解析 github.com 网页端 /releases/latest（不依赖 API）。
+
+    网页端由 fastly CDN 加速，连通性通常优于 api.github.com；
+    tag 从页面 HTML 提取，zip 资产 URL 按已知命名规则构造
+    （WPSEnhancer-{platform}-{arch}.zip）。
+    """
+    url = f"https://github.com/{repo}/releases/latest"
+    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    try:
+        context = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
+            html = resp.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise _NoRelease("仓库暂无已发布的版本（Release）") from e
+        raise UpdaterError(f"GitHub 返回状态码 {e.code}") from e
+    except (urllib.error.URLError, TimeoutError) as e:
+        raise UpdaterError(f"无法连接 GitHub：{e}") from e
+    except (ssl.SSLError, OSError) as e:
+        raise UpdaterError(f"网络或证书异常：{e}") from e
+
+    m = _HTML_TAG_RE.search(html)
+    if not m:
+        raise UpdaterError("无法解析更新信息（页面格式异常）")
+    tag = m.group(1)
+    asset_name = (
+        f"WPSEnhancer-{_ASSET_PLATFORM.get(platform, platform)}-{arch}.zip"
+    )
+    return ReleaseInfo(
+        tag_name=tag,
+        html_url=f"https://github.com/{repo}/releases/tag/{tag}",
+        zip_url=(
+            f"https://github.com/{repo}/releases/download/{tag}/{asset_name}"
+        ),
+        zip_size=None,
+        published_at="",
     )
 
 

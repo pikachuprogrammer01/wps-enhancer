@@ -377,3 +377,76 @@ class UpdateFlowUiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FallbackTest(unittest.TestCase):
+    """API 失败自动回退网页端 / 404 不回退 / 双失败报错。"""
+
+    def _html_resp(self, tag: str = "v1.1.0"):
+        """构造 github.com 网页端响应（HTML 含 tag 链接，支持 with）。"""
+        resp = mock.MagicMock()
+        resp.status = 200
+        resp.read.return_value = (
+            f'<a href="/pikachuprogrammer01/wps-enhancer/releases/tag/{tag}">'
+            f"{tag}</a>".encode()
+        )
+        resp.__enter__.return_value = resp  # with urlopen(...) as resp
+        return resp
+
+    def test_api_failure_falls_back_to_html(self):
+        """API 网络失败 → 回退网页端提取 tag 并构造资产 URL。"""
+        from urllib.error import URLError
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [
+                URLError("connect timeout"),
+                self._html_resp(),
+            ]
+            info = check_latest_release(platform="macos", arch="arm64")
+        self.assertEqual(info.tag_name, "v1.1.0")
+        self.assertTrue(
+            info.zip_url.endswith(
+                "releases/download/v1.1.0/WPSEnhancer-macOS-arm64.zip"
+            )
+        )
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_404_no_fallback(self):
+        """仓库无 Release（404）→ 直接报错，不回退网页端。"""
+        from urllib.error import HTTPError
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [
+                HTTPError(
+                    "https://api.github.com/releases/latest",
+                    404, "Not Found", None, None,
+                ),
+            ]
+            with self.assertRaises(UpdaterError) as ctx:
+                check_latest_release()
+        self.assertIn("暂无已发布", str(ctx.exception))
+        self.assertEqual(urlopen.call_count, 1)
+
+    def test_both_endpoints_fail_reports_error(self):
+        """API 与网页端都失败 → 报错文案含两种方式。"""
+        from urllib.error import URLError
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [
+                URLError("api timeout"),
+                URLError("html timeout"),
+            ]
+            with self.assertRaises(UpdaterError) as ctx:
+                check_latest_release()
+        self.assertIn("两种方式", str(ctx.exception))
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_html_no_tag_reports_parse_error(self):
+        """网页端页面无 tag 链接 → 解析错误提示。"""
+        from urllib.error import URLError
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            resp = mock.MagicMock()
+            resp.status = 200
+            resp.read.return_value = b"<html>nothing here</html>"
+            resp.__enter__.return_value = resp
+            urlopen.side_effect = [URLError("x"), resp]
+            with self.assertRaises(UpdaterError) as ctx:
+                check_latest_release()
+        self.assertIn("解析", str(ctx.exception))
