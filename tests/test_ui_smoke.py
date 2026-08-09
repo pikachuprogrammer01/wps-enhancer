@@ -23,6 +23,46 @@ class UiSmokeTest(unittest.TestCase):
         self.assertFalse(panel._export_btn.isEnabled())
         panel.close()
 
+    def test_export_btn_gated_on_preview_failure(self):
+        """预览生成异常时导出按钮禁用并提示（异常兜底）。"""
+        from unittest import mock
+        from features.contacts_import.panel import ContactsImportPanel
+        from features.contacts_import.ui import preview as preview_mod
+        panel = ContactsImportPanel()
+        try:
+            # 构造最小预览前置状态
+            panel._template = mock.MagicMock()
+            panel._sheet_data = mock.MagicMock()
+            panel._matches = []
+            with mock.patch.object(
+                preview_mod, "build_preview_data",
+                side_effect=RuntimeError("boom"),
+            ):
+                panel._refresh_preview()
+            self.assertFalse(panel._export_btn.isEnabled())
+        finally:
+            panel.close()
+
+    def test_export_btn_disabled_on_empty_preview(self):
+        """预览无数据时导出按钮禁用并提示。"""
+        from unittest import mock
+        from features.contacts_import.panel import ContactsImportPanel
+        from features.contacts_import.ui import preview as preview_mod
+        panel = ContactsImportPanel()
+        try:
+            panel._template = mock.MagicMock()
+            panel._sheet_data = mock.MagicMock()
+            panel._matches = []
+            empty_preview = mock.MagicMock()
+            empty_preview.rows = []
+            with mock.patch.object(
+                preview_mod, "build_preview_data", return_value=empty_preview,
+            ):
+                panel._refresh_preview()
+            self.assertFalse(panel._export_btn.isEnabled())
+        finally:
+            panel.close()
+
     def test_settings_dialog_instantiates(self):
         from ui.components.settings_dialog import SettingsDialog
         dlg = SettingsDialog()

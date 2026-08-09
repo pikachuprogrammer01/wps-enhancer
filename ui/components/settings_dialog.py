@@ -298,7 +298,49 @@ class SettingsDialog(QDialog):
         row.addWidget(clear_btn)
         row.addStretch()
         layout.addLayout(row)
+
+        cleanup_row = QHBoxLayout()
+        cleanup_row.addWidget(QLabel("保留最近"))
+        self._retain_combo = QComboBox()
+        for days in (15, 30, 60, 90, 365):
+            self._retain_combo.addItem(f"{days} 天", days)
+        self._retain_combo.setCurrentIndex(1)  # 默认 30 天
+        cleanup_row.addWidget(self._retain_combo)
+        cleanup_btn = QPushButton("清理过期日志")
+        cleanup_btn.clicked.connect(self._on_cleanup_logs)
+        cleanup_row.addWidget(cleanup_btn)
+        cleanup_row.addStretch()
+        layout.addLayout(cleanup_row)
         return group
+
+    def _on_cleanup_logs(self) -> None:
+        """按保留天数清理过期日志（二次确认；失败兜底提示）。"""
+        from core.logger import cleanup_logs
+        retain = self._retain_combo.currentData()
+        answer = QMessageBox.question(
+            self, "清理过期日志",
+            f"将删除 {retain} 天前的过期日志文件，确定继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            deleted, failed = cleanup_logs(retain)
+        except Exception as e:
+            get_logger("ui.settings_dialog").exception(f"清理日志失败：{e}")
+            show_toast(self.parent() or self, f"清理失败：{e}", success=False)
+            return
+        if failed:
+            show_toast(
+                self.parent() or self,
+                f"清理完成，{failed} 个文件删除失败（权限或占用）",
+                success=False,
+            )
+        elif deleted:
+            show_toast(self.parent() or self, f"已清理 {deleted} 个过期日志")
+        else:
+            show_toast(self.parent() or self, "没有过期日志", success=False)
 
     def _on_export_logs(self) -> None:
         """导出当天日志文件到用户选择的位置。"""

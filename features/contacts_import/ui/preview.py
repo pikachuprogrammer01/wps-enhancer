@@ -30,14 +30,33 @@ class PreviewMixin:
         self._refresh_preview()
 
     def _refresh_preview(self) -> None:
-        """重新生成预览并展示。"""
+        """重新生成预览并展示。
+
+        导出按钮仅预览正常且存在数据时开放；生成失败/无数据时
+        禁用按钮并给出明确提示（异常兜底）。
+        """
         if self._template is None or self._sheet_data is None or self._matches is None:
+            self._export_btn.setEnabled(False)
             return
-        settings = get_app_settings()
-        self._preview = build_preview_data(
-            self._sheet_data, self._template, self._matches, settings,
-        )
-        self._export_count_label.setText(f"导出 {len(self._preview.rows)} 行")
+        try:
+            settings = get_app_settings()
+            self._preview = build_preview_data(
+                self._sheet_data, self._template, self._matches, settings,
+            )
+        except Exception as e:
+            from core.logger import get_logger
+            get_logger("contacts_import.preview").exception(f"预览生成失败：{e}")
+            self._preview = None
+            self._export_btn.setEnabled(False)
+            self._status_bar.show_error(f"预览生成失败：{e}")
+            return
+        total = len(self._preview.rows)
+        self._export_count_label.setText(f"导出 {total} 行")
+        if total == 0:
+            self._export_btn.setEnabled(False)
+            self._status_bar.show_info("无数据可导出，请检查列映射")
+            return
+        self._export_btn.setEnabled(True)
         self._display_preview(settings)
 
     def _display_preview(self, settings) -> None:

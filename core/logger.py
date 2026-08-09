@@ -1,15 +1,20 @@
 import functools
 import logging
+import re
 import time
 import traceback
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
-from typing import Any, Callable, Optional, Set
+from typing import Any, Callable, Optional, Set, Tuple
 
 from core.app_paths import get_logs_dir
 
 _FMT = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
 _DATE_FMT = "%Y-%m-%d %H:%M:%S"
+
+# 敏感信息内容级脱敏：11 位手机号中间四位替换（138****5678）
+_PHONE_RE = re.compile(r"(1[3-9]\d)\d{4}(\d{4})")
+_SLOW_CALL_MS = 1000  # 超过该耗时的调用即使未开 DEBUG 也记 WARNING（排查性能）
 
 
 def get_logger(module_name: str) -> logging.Logger:
@@ -53,12 +58,37 @@ def is_debug_log_enabled() -> bool:
         return False
 
 
+def cleanup_logs(retain_days: int = 30) -> Tuple[int, int]:
+    """删除 retain_days 天前的过期日志文件，返回 (删除数, 失败数)。
+
+    按文件修改时间判断；正在写入的当天日志 mtime 新，天然保留。
+    单个文件删除失败不中断（记录 warning），调用方按失败数提示。
+    """
+    cutoff = time.time() - retain_days * 86400
+    deleted = 0
+    failed = 0
+    for f in get_logs_dir().glob("wps_enhancer_*.log"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                deleted += 1
+        except OSError as e:
+            get_logger("core.logger").warning(f"清理日志失败 {f}：{e}")
+            failed += 1
+    return deleted, failed
+
+
+def _mask_sensitive(text: str) -> str:
+    """内容级脱敏：11 位手机号中间四位替换为 ****（token 等由 mask_keys 覆盖）。"""
+    return _PHONE_RE.sub(r"\1****\2", text)
+
+
 def _summarize(value: Any, max_len: int) -> str:
-    """将参数值转换为日志摘要字符串（防大对象刷屏）。"""
+    """将参数值转换为日志摘要字符串（防大对象刷屏 + 敏感内容脱敏）。"""
     if value is None:
         return "None"
     if isinstance(value, str):
-        text = value
+        text = _mask_sensitive(value)
     elif isinstance(value, (list, tuple, set)):
         text = f"({len(value)} 项)"
     elif isinstance(value, dict):
@@ -127,6 +157,10 @@ def log_call(
                 if log_result:
                     msg += f"，结果: {_summarize(result, max_arg_len)}"
                 logger.log(level, msg)
+            elif (time.perf_counter() - start) * 1000 > _SLOW_CALL_MS:
+                # 慢调用：未开 DEBUG 也记录 WARNING，便于排查性能问题
+                elapsed_ms = (time.perf_counter() - start) * 1000
+                logger.warning(f"{func_name}() 慢调用，耗时 {elapsed_ms:.1f}ms")
             return result
 
         return wrapper
