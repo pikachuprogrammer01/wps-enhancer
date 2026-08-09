@@ -80,12 +80,17 @@ class SettingsDialog(QDialog):
         return group
 
     def _on_check_update(self) -> None:
-        """手动检查更新（后台检查，结果弹窗）。"""
+        """手动检查更新（后台检查，结果弹窗；完成后复位状态文本）。"""
         from ui.components.update_flow import check_update_now
         self._check_update_btn.setEnabled(False)
         self._update_status_label.setText("正在检查更新…")
-        check_update_now(self, silent_on_failure=False)
-        self._check_update_btn.setEnabled(True)
+
+        def _reset_status() -> None:
+            # 检查完成（无论成功失败）：复位按钮与状态文本
+            self._check_update_btn.setEnabled(True)
+            self._update_status_label.setText("")
+
+        check_update_now(self, silent_on_failure=False, on_done=_reset_status)
 
     def _build_import_tab(self) -> QWidget:
         """导入处理：手机号处理 + 文件处理（声明检测）。"""

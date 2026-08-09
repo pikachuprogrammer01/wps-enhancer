@@ -76,9 +76,9 @@ def check_latest_release(
     arch = arch or _current_arch()
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    # certifi 根证书（python.org 的 Python 与 PyInstaller 冻结环境均无系统证书）
-    context = ssl.create_default_context(cafile=certifi.where())
     try:
+        # certifi 根证书（python.org 的 Python 与 PyInstaller 冻结环境均无系统证书）
+        context = ssl.create_default_context(cafile=certifi.where())
         with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
             if resp.status != 200:
                 raise UpdaterError(f"GitHub API 返回状态码 {resp.status}")
@@ -90,6 +90,9 @@ def check_latest_release(
         raise UpdaterError(f"GitHub API 返回状态码 {e.code}") from e
     except (urllib.error.URLError, TimeoutError) as e:
         raise UpdaterError(f"无法连接 GitHub：{e}") from e
+    except (ssl.SSLError, OSError, ValueError) as e:
+        # 证书/SSL 环境异常也归为 UpdaterError，避免线程静默卡死
+        raise UpdaterError(f"网络或证书异常：{e}") from e
     except (ValueError, KeyError) as e:
         raise UpdaterError(f"解析更新信息失败：{e}") from e
 

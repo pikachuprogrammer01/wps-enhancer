@@ -7,6 +7,7 @@
 
 import threading
 from pathlib import Path
+from typing import Callable, Optional
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QMessageBox, QWidget
@@ -38,25 +39,35 @@ def _replace_guide() -> str:
     return _REPLACE_GUIDE_WIN if sys.platform == "win32" else _REPLACE_GUIDE_MAC
 
 
-def check_update_now(parent: QWidget, silent_on_failure: bool) -> None:
-    """后台检查更新并处理结果（立即返回，不阻塞 UI）。"""
+def check_update_now(parent: QWidget, silent_on_failure: bool,
+                     on_done: Optional[Callable[[], None]] = None) -> None:
+    """后台检查更新并处理结果（立即返回，不阻塞 UI）。
+
+    on_done：结果处理完成后在主线程回调（用于复位 UI 状态，如清空"检查中"文本）。
+    """
     def worker() -> None:
         try:
             result: tuple = ("ok", check_latest_release())
         except UpdaterError as e:
             get_logger("ui.update_flow").warning(f"检查更新失败：{e}")
             result = ("error", str(e))
-        QTimer.singleShot(0, lambda: _handle_result(parent, result, silent_on_failure))
+        except Exception as e:  # 兜底：任何异常都不允许线程静默卡死
+            get_logger("ui.update_flow").exception(f"检查更新异常：{e}")
+            result = ("error", f"检查更新异常：{e}")
+        QTimer.singleShot(0, lambda: _handle_result(parent, result, silent_on_failure, on_done))
 
     threading.Thread(target=worker, daemon=True).start()
 
 
-def _handle_result(parent: QWidget, result: tuple, silent: bool) -> None:
+def _handle_result(parent: QWidget, result: tuple, silent: bool,
+                   on_done: Optional[Callable[[], None]] = None) -> None:
     """处理检查结果：无更新提示/有新版本询问下载。"""
     status, payload = result
     if status == "error":
         if not silent:
             QMessageBox.warning(parent, "检查更新失败", payload)
+        if on_done is not None:
+            on_done()
         return
     info: ReleaseInfo = payload
     if compare_versions(APP_VERSION, info.tag_name) >= 0:
@@ -64,6 +75,8 @@ def _handle_result(parent: QWidget, result: tuple, silent: bool) -> None:
             QMessageBox.information(
                 parent, "检查更新", f"当前已是最新版本 v{APP_VERSION}",
             )
+        if on_done is not None:
+            on_done()
         return
     answer = QMessageBox.question(
         parent, "发现新版本",
@@ -72,6 +85,8 @@ def _handle_result(parent: QWidget, result: tuple, silent: bool) -> None:
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.Yes,
     )
+    if on_done is not None:
+        on_done()
     if answer != QMessageBox.StandardButton.Yes:
         return
     _start_download(parent, info)

@@ -8,6 +8,11 @@ import sys
 from pathlib import Path as _P
 sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PyQt6 import QtWidgets
+from PyQt6.QtWidgets import QApplication
+
 from core.updater import (
     ReleaseInfo, UpdaterError, check_latest_release, compare_versions,
     download_file,
@@ -125,6 +130,17 @@ class CheckReleaseTest(unittest.TestCase):
             with self.assertRaises(UpdaterError):
                 check_latest_release()
 
+    def test_check_latest_release_ssl_error(self):
+        """证书/SSL 环境异常也归为 UpdaterError（不静默卡死线程）。"""
+        import ssl
+        with mock.patch(
+            "core.updater.urllib.request.urlopen",
+            side_effect=ssl.SSLError("cert verify failed"),
+        ):
+            with self.assertRaises(UpdaterError) as ctx:
+                check_latest_release()
+            self.assertIn("证书", str(ctx.exception))
+
 
 class DownloadTest(unittest.TestCase):
     """更新包下载。"""
@@ -180,6 +196,70 @@ class AppPathsPlatformTest(unittest.TestCase):
             data = ap.get_data_dir()
             self.assertEqual(data, ap.get_app_root())
             self.assertEqual(ap.get_logs_dir(), ap.get_app_root() / "logs")
+
+
+class UpdateFlowUiTest(unittest.TestCase):
+    """update_flow 结果处理：on_done 回调必须触发（状态文本复位）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _run_handle_result(self, result: tuple, silent: bool = False):
+        """执行 _handle_result，on_done 记录调用。"""
+        from ui.components import update_flow
+        done: list = []
+        parent = QtWidgets.QWidget()
+        try:
+            with mock.patch.object(
+                QtWidgets.QMessageBox, "information",
+            ), mock.patch.object(
+                QtWidgets.QMessageBox, "warning",
+            ), mock.patch.object(
+                QtWidgets.QMessageBox, "question", return_value=QtWidgets.QMessageBox.StandardButton.No,
+            ):
+                update_flow._handle_result(
+                    parent, result, silent, on_done=lambda: done.append(True),
+                )
+        finally:
+            parent.close()
+        return done
+
+    def test_handle_result_error_calls_on_done(self):
+        self.assertEqual(self._run_handle_result(("error", "boom")), [True])
+
+    def test_handle_result_latest_calls_on_done(self):
+        from core.updater import ReleaseInfo
+        info = ReleaseInfo(tag_name="v1.0.0", html_url="https://x")
+        self.assertEqual(self._run_handle_result(("ok", info)), [True])
+
+    def test_handle_result_new_version_calls_on_done(self):
+        from core.updater import ReleaseInfo
+        info = ReleaseInfo(
+            tag_name="v99.0.0", html_url="https://x",
+            zip_url="https://x/pkg.zip",
+        )
+        self.assertEqual(self._run_handle_result(("ok", info)), [True])
+
+    def test_settings_check_update_resets_status(self):
+        """设置页手动检查更新：完成后状态文本与按钮复位（不残留"正在检查更新…"）。"""
+        from ui.components.settings_dialog import SettingsDialog
+        from ui.components import update_flow
+        dlg = SettingsDialog()
+        try:
+            self._check_called: list = []
+
+            def fake_check(parent, silent_on_failure, on_done=None):
+                self._check_called.append(silent_on_failure)
+                on_done()  # 模拟后台完成
+
+            with mock.patch.object(update_flow, "check_update_now", fake_check):
+                dlg._on_check_update()
+            self.assertEqual(self._check_called, [False])
+            self.assertEqual(dlg._update_status_label.text(), "")
+            self.assertTrue(dlg._check_update_btn.isEnabled())
+        finally:
+            dlg.close()
 
 
 if __name__ == "__main__":
