@@ -147,7 +147,7 @@ def check_latest_release(
         _apply_system_proxy()  # 打包版无 shell 代理环境：从系统代理补上
     if update_url:
         try:
-            return _check_via_custom(update_url, timeout)
+            return _check_via_custom(update_url, timeout, platform, arch)
         except _InvalidUpdateSource:
             raise  # 源配置错误必须暴露，回退会掩盖问题
         except UpdaterError as e:
@@ -168,11 +168,16 @@ def check_latest_release(
             ) from api_err
 
 
-def _check_via_custom(update_url: str, timeout: int) -> ReleaseInfo:
+def _check_via_custom(update_url: str, timeout: int, platform: str = "",
+                      arch: str = "") -> ReleaseInfo:
     """通过自定义更新源查询最新版本（update.json）。
 
-    格式：{"version": "1.1.0", "url": "https://.../包.zip", "notes": "说明"}
-    字段缺失/格式错误抛 UpdaterError（明确提示，不静默）。
+    格式（多平台）：
+        {"version": "1.1.0", "urls": {"macos-arm64": "…zip", "windows-x86_64": "…zip"},
+         "notes": "说明"}
+    兼容旧格式（单平台）：
+        {"version": "1.1.0", "url": "…zip", "notes": "说明"}
+    字段缺失/格式错误抛 _InvalidUpdateSource（明确提示，不静默）。
     """
     req = urllib.request.Request(update_url, headers={"User-Agent": _UA})
     try:
@@ -193,12 +198,23 @@ def _check_via_custom(update_url: str, timeout: int) -> ReleaseInfo:
         ) from e
 
     version = str(data.get("version", "")).strip()
-    zip_url = str(data.get("url", "")).strip()
     if not version:
         raise _InvalidUpdateSource("自定义更新源缺少 version 字段")
-    if not zip_url:
-        raise _InvalidUpdateSource("自定义更新源缺少 url 字段")
     tag = version if version.startswith("v") else f"v{version}"
+    # 多平台 urls 映射优先，兼容旧版单 url
+    urls = data.get("urls") if isinstance(data.get("urls"), dict) else {}
+    zip_url = ""
+    if urls:
+        key = f"{platform}-{arch}" if platform and arch else ""
+        zip_url = str(urls.get(key, "")).strip()
+        if not zip_url:
+            raise _InvalidUpdateSource(
+                f"自定义更新源缺少 {key or 'platform-arch'} 的下载地址（urls.{key}）",
+            )
+    else:
+        zip_url = str(data.get("url", "")).strip()
+        if not zip_url:
+            raise _InvalidUpdateSource("自定义更新源缺少 url 字段")
     return ReleaseInfo(
         tag_name=tag,
         html_url=update_url,

@@ -72,22 +72,39 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
 
 检查与下载更新默认走 GitHub Releases；若网络受限（连 `git push` 都超时的场景），可在 **设置 → 更新 → 自定义更新源** 填入一个 `update.json` 的 HTTP(S) 地址，app 将**优先从自定义源**检查与下载，失败才回退 GitHub。
 
-**update.json 格式**（任意可达的静态地址即可，推荐 Gitee 仓库 raw 或对象存储 OSS/COS 静态托管）：
+**update.json 格式**（推荐多平台 `urls` 映射，CI 发布时自动生成并推回仓库）：
 
 ```json
 {
   "version": "1.1.0",
-  "url": "https://gitee.com/你的账号/wps-enhancer/raw/master/WPSEnhancer-macOS-arm64.zip",
+  "urls": {
+    "macos-arm64": "https://gitee.com/你的账号/wps-enhancer/raw/master/WPSEnhancer-macOS-arm64.zip",
+    "macos-x86_64": "https://gitee.com/你的账号/wps-enhancer/raw/master/WPSEnhancer-macOS-x86_64.zip",
+    "windows-x86_64": "https://gitee.com/你的账号/wps-enhancer/raw/master/WPSEnhancer-Windows-x86_64.zip",
+    "windows-x86": "https://gitee.com/你的账号/wps-enhancer/raw/master/WPSEnhancer-Windows-x86.zip"
+  },
   "notes": "本次更新内容说明（可选，会显示在更新提示框中）"
 }
 ```
 
 - `version`：版本号（可带 `v` 前缀）
-- `url`：更新包 zip 的直链（按平台/架构分别准备，如 `WPSEnhancer-macOS-arm64.zip`、`WPSEnhancer-Windows-x86_64.zip`）
+- `urls`：各「平台-架构」的 zip 直链（`macos-arm64` / `macos-x86_64` / `windows-x86_64` / `windows-x86`）
 - `notes`：可选，更新说明
+- 兼容旧格式：单 `url` 字段（只有一条下载地址时）
 
 > Gitee 托管示例：把 `update.json` 与各平台 zip 放进 Gitee 仓库，raw 地址形如 `https://gitee.com/<用户名>/<仓库>/raw/<分支>/update.json`——国内直连可达，无需服务器。
-> 配置错误（非 JSON / 缺 `version` / 缺 `url`）会直接提示，不会静默回退；仅"源不可达"时回退 GitHub。
+> 配置错误（非 JSON / 缺 `version` / 缺 `urls` 中当前平台的地址）会直接提示，不会静默回退；仅"源不可达"时回退 GitHub。
+
+### GitHub × Gitee 联动（提交 GitHub，Gitee 自动同步）
+
+只需在 Gitee 网页端配置一次镜像，之后**照常只提交 GitHub**，Gitee 仓库自动同步代码（包括 CI 自动生成的 `update.json`）：
+
+1. **Gitee 新建仓库** → 选择「从 GitHub 导入」（需先登录 Gitee 后在 设置 → 账号绑定 中绑定你的 GitHub 账号）→ 选中 `wps-enhancer` → 导入
+2. **配置镜像**：进入 Gitee 仓库 → 「管理」 → 「镜像仓库」 → 添加 GitHub 源（仓库地址填 `https://github.com/pikachuprogrammer01/wps-enhancer.git`，分支 `main`）→ 保存
+   - 镜像同步频率可选：手动 / 每小时 / 每天等；日常用「每天」即可，发布当天想立即更新可点「立即同步」
+3. 设置 → 更新 → 自定义更新源填：`https://gitee.com/<你的Gitee用户名>/wps-enhancer/raw/master/update.json`
+
+> 说明：发布 tag 后 CI 会自动生成最新的 `update.json`（version/urls/notes 齐全）并推回 main，Gitee 镜像同步后即生效。zip 更新包由 GitHub Releases 提供下载（urls 默认指向 GitHub release 直链）；若 GitHub 下载也不稳定，可在 Gitee 仓库「发行版」手动上传 zip 后，把 `update.json` 的 `urls` 改指 Gitee 下载直链（Gitee 同步时不会覆盖你改过的文件，除非 GitHub 侧又更新了它）。
 
 > ⚠️ 当前 app 为 ad-hoc 签名，从 GitHub 下载的 .app 首次打开需右键 → 打开（或 `xattr -d com.apple.quarantine <路径>`）绕过 Gatekeeper。
 

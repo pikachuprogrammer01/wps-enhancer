@@ -143,3 +143,48 @@ jobs:
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: dist/WPSEnhancer-Windows-*.zip
+
+      # —— GitHub × Gitee 联动：自动生成 update.json 并推回 main ——
+      # Gitee 镜像仓库会同步 main 分支，app 的自定义更新源指向
+      # Gitee raw 的 update.json 即可用国内可达地址检查/下载更新。
+      - name: Generate update.json and push to main
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag_name || github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git fetch origin --tags
+          git checkout -b update-main origin/main
+          # 更新说明取本次发布 changelog（前 800 字符），失败则为空
+          NOTES=""
+          PREV=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || true)
+          if [ -n "$PREV" ]; then
+            NOTES=$(git log "$PREV..HEAD" --pretty=format:"%s" --grep="^feat" --grep="^fix" --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
+          fi
+          python3 - "$TAG" "$REPO" "$NOTES" <<'PYEOF'
+          import json, sys
+          tag, repo, notes = sys.argv[1], sys.argv[2], sys.argv[3][:800]
+          data = {
+              "version": tag,
+              "urls": {
+                  "macos-arm64": f"https://github.com/{repo}/releases/download/{tag}/WPSEnhancer-macOS-arm64.zip",
+                  "macos-x86_64": f"https://github.com/{repo}/releases/download/{tag}/WPSEnhancer-macOS-x86_64.zip",
+                  "windows-x86_64": f"https://github.com/{repo}/releases/download/{tag}/WPSEnhancer-Windows-x86_64.zip",
+                  "windows-x86": f"https://github.com/{repo}/releases/download/{tag}/WPSEnhancer-Windows-x86.zip",
+              },
+              "notes": notes,
+          }
+          with open("update.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+          PYEOF
+          git add update.json
+          if git diff --cached --quiet; then
+            echo "update.json 无变化，跳过推送"
+          else
+            git commit -m "chore(update): 发布 ${TAG}，更新 update.json"
+            git push origin HEAD:main
+            echo "update.json 已推送（Gitee 镜像将自动同步）"
+          fi

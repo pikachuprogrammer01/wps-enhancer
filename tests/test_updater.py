@@ -508,3 +508,35 @@ class CustomUpdateSourceTest(unittest.TestCase):
             info = check_latest_release(update_url="https://mirror.example.com/update.json")
         self.assertEqual(info.tag_name, "v1.2.0")
         self.assertEqual(urlopen.call_count, 2)
+
+    def test_custom_source_urls_map_platform(self):
+        """多平台 urls 映射：按 platform-arch 取对应下载地址。"""
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [self._json_resp({
+                "version": "1.4.0",
+                "urls": {
+                    "macos-arm64": "https://m.example.com/mac-arm64.zip",
+                    "macos-x86_64": "https://m.example.com/mac-x64.zip",
+                    "windows-x86_64": "https://m.example.com/win-x64.zip",
+                },
+            })]
+            info = check_latest_release(
+                update_url="https://mirror.example.com/update.json",
+                platform="windows", arch="x86_64",
+            )
+        self.assertEqual(info.tag_name, "v1.4.0")
+        self.assertEqual(info.zip_url, "https://m.example.com/win-x64.zip")
+
+    def test_custom_source_missing_platform_url(self):
+        """urls 映射缺当前平台地址：明确报错提示缺哪个键。"""
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = [self._json_resp({
+                "version": "1.4.0",
+                "urls": {"macos-arm64": "https://m.example.com/mac-arm64.zip"},
+            })]
+            with self.assertRaises(UpdaterError) as ctx:
+                check_latest_release(
+                    update_url="https://mirror.example.com/update.json",
+                    platform="windows", arch="x86_64",
+                )
+        self.assertIn("windows-x86_64", str(ctx.exception))
