@@ -667,3 +667,33 @@ class InstallGuideTest(unittest.TestCase):
         s = AppSettings()
         self.assertTrue(s.install_dir)  # 平台默认非空
         self.assertTrue(s.download_dir)
+
+    def test_start_download_shows_immediate_guide(self):
+        """点 Yes 后立即 toast 引导（下载前有反馈，不是关闭弹窗就没后续）。"""
+        from unittest import mock as _mock
+        from ui.components import update_flow as uf
+        info = ReleaseInfo(
+            tag_name="v9.9.9", notes="", published_at="2026-08-10T00:00:00Z",
+            zip_url="https://example.com/pkg.zip",
+            html_url="https://example.com/release",
+        )
+        with _mock.patch(
+            "PyQt6.QtWidgets.QMessageBox.information"
+        ) as info_mock:
+            with _mock.patch.object(uf, "_resolve_download_dir") as dir_mock:
+                with _mock.patch("ui.components.toast.show_toast") as toast_mock:
+                    with _mock.patch.object(
+                        uf, "download_file", side_effect=RuntimeError("stop thread"),
+                    ):
+                        with _mock.patch("threading.Thread.start"):
+                            dir_mock.return_value = Path("/tmp/up_test")
+                            uf._start_download(None, info)
+        self.assertFalse(info_mock.called)  # 有 zip_url，不走「未提供更新包」分支
+        self.assertTrue(toast_mock.called)
+        text = toast_mock.call_args.args[1]
+        self.assertIn("开始下载更新包 v9.9.9", text)
+        self.assertIn("下载完成后将提示替换方法", text)
+        # 下载失败路径有 warning 兜底（_handle_download_done）
+        with _mock.patch.object(uf, "QMessageBox") as msg_mock:
+            uf._handle_download_done(None, ("error", "网络异常"))
+        self.assertTrue(msg_mock.warning.called)

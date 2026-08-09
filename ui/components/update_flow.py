@@ -183,7 +183,7 @@ def _handle_result(parent: QWidget, result: tuple, silent: bool,
 
 
 def _start_download(parent: QWidget, info: ReleaseInfo) -> None:
-    """后台下载更新包到下载目录。"""
+    """后台下载更新包到下载目录（下载前立即提示，完成后弹替换引导）。"""
     if not info.zip_url:
         QMessageBox.information(
             parent, "更新",
@@ -194,6 +194,18 @@ def _start_download(parent: QWidget, info: ReleaseInfo) -> None:
     download_dir = _resolve_download_dir()
     dest = download_dir / f"WPS增强工具_{info.tag_name}.zip"
     dest.parent.mkdir(parents=True, exist_ok=True)
+    # 点 Yes 后立即给反馈：告知正在下载与保存位置（toast 不阻塞，下载完成
+    # 后另有「更新包已下载 + 替换指引」弹窗，失败有 warning 兜底）。
+    try:
+        from ui.components.toast import show_toast
+        show_toast(
+            parent,
+            f"开始下载更新包 {info.tag_name}…（保存到 {dest.parent}）\n"
+            "下载完成后将提示替换方法",
+            success=True,
+        )
+    except Exception:  # 提示失败不影响下载主流程
+        get_logger("ui.update_flow").exception("下载开始提示失败")
 
     def worker() -> None:
         try:
