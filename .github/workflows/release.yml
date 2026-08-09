@@ -76,9 +76,10 @@ jobs:
           else
             RANGE="HEAD"  # 首个发布：取全部提交
           fi
-          FEAT=$(git log "$RANGE" --pretty=format:"- %s" --grep="^feat" --no-merges || true)
-          FIX=$(git log "$RANGE" --pretty=format:"- %s" --grep="^fix" --no-merges || true)
-          OTHER=$(git log "$RANGE" --pretty=format:"- %s" --grep="^feat" --grep="^fix" --invert-grep --no-merges || true)
+          # 先取 %s 再按标题去重（awk 保序）：同标题的重复 commit（如历史重写/重复推送）只留一条
+          FEAT=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
+          FIX=$(git log "$RANGE" --pretty=format:"%s" --grep="^fix" --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
+          OTHER=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" --grep="^fix" --invert-grep --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
           BODY=""
           if [ -n "$FEAT" ]; then printf -v BODY '%s## ✨ 新特性\n\n%s\n\n' "$BODY" "$FEAT"; fi
           if [ -n "$FIX" ]; then printf -v BODY '%s## 🐛 问题修复\n\n%s\n\n' "$BODY" "$FIX"; fi

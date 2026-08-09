@@ -196,5 +196,10 @@ class MainWindow(QMainWindow):
         except Exception:
             return
         from PyQt6.QtCore import QTimer
+        from core.settings import get_app_settings
         from ui.components.update_flow import check_update_now
-        QTimer.singleShot(4000, lambda: check_update_now(self, True))
+        settings = get_app_settings()
+        QTimer.singleShot(
+            4000,
+            lambda: check_update_now(self, True, use_proxy=settings.use_system_proxy),
+        )

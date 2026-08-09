@@ -286,8 +286,9 @@ class UpdateFlowUiTest(unittest.TestCase):
         try:
             self._check_called: list = []
 
-            def fake_check(parent, silent_on_failure, on_done=None):
+            def fake_check(parent, silent_on_failure, on_done=None, use_proxy=True):
                 self._check_called.append(silent_on_failure)
+                self._proxy_called = use_proxy
                 on_done()  # 模拟后台完成
 
             with mock.patch.object(update_flow, "check_update_now", fake_check):

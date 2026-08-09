@@ -114,16 +114,19 @@ def _apply_system_proxy() -> None:
 def check_latest_release(
     repo: str = REPO, timeout: int = _DEFAULT_TIMEOUT,
     platform: Optional[str] = None, arch: Optional[str] = None,
+    use_system_proxy: bool = True,
 ) -> ReleaseInfo:
     """查询 GitHub Releases 最新版本（网络/解析失败抛 UpdaterError）。
 
     platform：更新包平台标签（"macos"/"windows"，默认按当前系统）；
     arch：架构标签（"arm64"/"x86_64"/"x86"，默认按当前机器）。
+    use_system_proxy：是否自动读取并使用系统代理（打包版无 shell 代理环境）。
     资产匹配：优先「平台+架构」精确匹配，回退「仅平台」匹配（兼容旧资产）。
     """
     platform = platform or _current_platform()
     arch = arch or _current_arch()
-    _apply_system_proxy()  # 打包版无 shell 代理环境：从系统代理补上
+    if use_system_proxy:
+        _apply_system_proxy()  # 打包版无 shell 代理环境：从系统代理补上
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     try:
@@ -208,9 +211,11 @@ def _current_arch() -> str:
 
 
 @log_call("core.updater", log_args=False)
-def download_file(url: str, dest: Path, timeout: int = 30) -> Path:
+def download_file(url: str, dest: Path, timeout: int = 30,
+                  use_system_proxy: bool = True) -> Path:
     """流式下载 url 到 dest（覆盖），返回 dest；失败抛 UpdaterError。"""
-    _apply_system_proxy()  # 下载同样走系统代理
+    if use_system_proxy:
+        _apply_system_proxy()  # 下载同样走系统代理
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     context = ssl.create_default_context(cafile=certifi.where())
     try:

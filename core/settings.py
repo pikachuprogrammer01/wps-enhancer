@@ -44,6 +44,7 @@ class AppSettings:
     )
     log_debug: bool = False
     auto_update_enabled: bool = True  # 启动时自动检查 GitHub Releases 更新
+    use_system_proxy: bool = True     # 检查/下载更新时自动走系统代理（默认开启）
 
 
 _cache: Optional[AppSettings] = None

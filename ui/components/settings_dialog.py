@@ -66,6 +66,9 @@ class SettingsDialog(QDialog):
         self._auto_update_check = QCheckBox("自动检查更新（启动时检查 GitHub Releases）")
         self._auto_update_check.setChecked(self._settings.auto_update_enabled)
         layout.addWidget(self._auto_update_check)
+        self._proxy_check = QCheckBox("自动使用系统代理（网络受限时建议开启）")
+        self._proxy_check.setChecked(self._settings.use_system_proxy)
+        layout.addWidget(self._proxy_check)
         row = QHBoxLayout()
         row.addWidget(QLabel(f"当前版本：v{APP_VERSION}"))
         row.addStretch()
@@ -90,7 +93,10 @@ class SettingsDialog(QDialog):
             self._check_update_btn.setEnabled(True)
             self._update_status_label.setText("")
 
-        check_update_now(self, silent_on_failure=False, on_done=_reset_status)
+        check_update_now(
+            self, silent_on_failure=False, on_done=_reset_status,
+            use_proxy=self._settings.use_system_proxy,
+        )
 
     def _build_import_tab(self) -> QWidget:
         """导入处理：手机号处理 + 文件处理（声明检测）。"""
@@ -396,6 +402,7 @@ class SettingsDialog(QDialog):
             ],
             log_debug=self._log_debug_check.isChecked(),
             auto_update_enabled=self._auto_update_check.isChecked(),
+            use_system_proxy=self._proxy_check.isChecked(),
         )
         return settings
 
