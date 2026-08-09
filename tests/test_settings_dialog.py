@@ -21,12 +21,8 @@ class SettingsDialogExtTest(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def _make_dialog(self):
-        """构造对话框（mock get_app_settings 隔离真实配置）。"""
-        from core.settings import AppSettings
-        from core.template.config import default_builtin_columns
-        settings = AppSettings(builtin_columns=default_builtin_columns())
+        """构造对话框（控件值来自真实设置，保持与 _settings 一致）。"""
         dlg = sd.SettingsDialog()
-        dlg._settings = settings  # 替换为隔离实例
         return dlg
 
     def test_builtin_placeholder_input_creates_row(self):
@@ -153,10 +149,12 @@ class SettingsDialogExtTest(unittest.TestCase):
                 dlg.close()
 
     def test_save_shows_toast(self):
-        """保存成功后弹出轻提示（toast）。"""
+        """设置变化后保存：弹出轻提示（toast）。"""
         dlg = self._make_dialog()
         try:
+            dlg._vcf_prefix_edit.setText("changed-")
             with mock.patch.object(sd, "show_toast") as toast, \
+                    mock.patch.object(sd, "save_app_settings"), \
                     mock.patch.object(dlg, "accept") as accept:
                 dlg._on_save()
             toast.assert_called_once()
@@ -164,6 +162,87 @@ class SettingsDialogExtTest(unittest.TestCase):
             accept.assert_called_once()
         finally:
             dlg.close()
+
+    def test_save_no_change_no_toast(self):
+        """设置无变化时保存：不弹保存成功提示。"""
+        dlg = self._make_dialog()
+        try:
+            with mock.patch.object(sd, "show_toast") as toast, \
+                    mock.patch.object(sd, "save_app_settings"), \
+                    mock.patch.object(dlg, "accept") as accept:
+                dlg._on_save()
+            toast.assert_not_called()
+            accept.assert_called_once()
+        finally:
+            dlg.close()
+
+    def test_reset_defaults_requires_confirm(self):
+        """恢复默认设置：拒绝确认不操作，确认后保存默认并提示。"""
+        dlg = self._make_dialog()
+        try:
+            from core.settings import save_app_settings
+            with mock.patch.object(
+                QMessageBox, "question",
+                return_value=QMessageBox.StandardButton.No,
+            ), mock.patch.object(sd, "save_app_settings") as save, \
+                    mock.patch.object(dlg, "accept") as accept:
+                dlg._on_reset_defaults()
+            save.assert_not_called()
+            accept.assert_not_called()
+
+            with mock.patch.object(
+                QMessageBox, "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ), mock.patch.object(sd, "save_app_settings") as save, \
+                    mock.patch.object(sd, "show_toast") as toast, \
+                    mock.patch.object(dlg, "accept") as accept:
+                dlg._on_reset_defaults()
+            save.assert_called_once()
+            from core.settings import AppSettings
+            self.assertEqual(save.call_args[0][0], AppSettings())
+            self.assertEqual(toast.call_args[0][1], "重置成功")
+            accept.assert_called_once()
+        finally:
+            dlg.close()
+
+
+class StatusBarToastTest(unittest.TestCase):
+    """StatusBar 提示 toast 化：挂载时弹 toast，未挂载回退文本。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_status_bar_toast_on_window(self):
+        from ui.components.status_bar import StatusBar
+        from PyQt6.QtWidgets import QMainWindow
+        win = QMainWindow()
+        bar = StatusBar()
+        win.setCentralWidget(bar)
+        try:
+            with mock.patch(
+                "ui.components.status_bar.show_toast",
+            ) as t:
+                bar.show_success("已保存")
+                bar.show_error("导出失败")
+            self.assertEqual(t.call_count, 2)
+            self.assertEqual(t.call_args[0][1], "导出失败")
+            self.assertFalse(t.call_args.kwargs["success"])  # 错误提示 success=False
+        finally:
+            win.close()
+
+    def test_status_bar_fallback_without_window(self):
+        from ui.components.status_bar import StatusBar
+        bar = StatusBar()  # 未挂载：window() 返回自身
+        try:
+            with mock.patch(
+                "ui.components.status_bar.show_toast",
+            ) as t:
+                bar.show_info("fallback")
+            t.assert_not_called()
+            self.assertFalse(bar._label.isHidden())  # offscreen 用 isHidden 断言
+        finally:
+            bar.close()
 
 
 class ToastTest(unittest.TestCase):

@@ -100,6 +100,9 @@ class MappingTableMixin:
 
                 del_btn = QPushButton("删除")
                 del_btn.setFixedWidth(48)
+                del_btn.setStyleSheet(
+                    "QPushButton { padding: 3px 6px; font-size: 12px; }",
+                )
                 del_btn.clicked.connect(
                     lambda checked=False, r=row: self._remove_template_column(r),
                 )

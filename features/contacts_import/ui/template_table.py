@@ -114,8 +114,10 @@ class TemplateTableMixin:
         op_layout = QHBoxLayout(ops)
         op_layout.setContentsMargins(0, 0, 0, 0)
         op_layout.setSpacing(2)
+        compact_style = "QPushButton { padding: 3px 6px; font-size: 12px; }"
         apply_btn = QPushButton("应用")
         apply_btn.setFixedWidth(44)
+        apply_btn.setStyleSheet(compact_style)
         apply_btn.clicked.connect(
             lambda checked=False, n=name: self._apply_template_by_name(n),
         )
@@ -123,18 +125,21 @@ class TemplateTableMixin:
         if not gray:
             edit_btn = QPushButton("编辑")
             edit_btn.setFixedWidth(44)
+            edit_btn.setStyleSheet(compact_style)
             edit_btn.clicked.connect(
                 lambda checked=False, n=name: self._edit_template_by_name(n),
             )
             op_layout.addWidget(edit_btn)
             rename_btn = QPushButton("重命名")
-            rename_btn.setFixedWidth(60)
+            rename_btn.setFixedWidth(64)
+            rename_btn.setStyleSheet(compact_style)
             rename_btn.clicked.connect(
                 lambda checked=False, n=name: self._rename_template_by_name(n),
             )
             op_layout.addWidget(rename_btn)
             delete_btn = QPushButton("删除")
             delete_btn.setFixedWidth(44)
+            delete_btn.setStyleSheet(compact_style)
             delete_btn.clicked.connect(
                 lambda checked=False, n=name: self._delete_template_by_name(n),
             )

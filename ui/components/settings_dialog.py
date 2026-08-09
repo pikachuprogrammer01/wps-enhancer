@@ -22,8 +22,8 @@ from ui.components.toast import show_toast
 _VCF_KEYS = ["name", "phone", "company", "website"]
 _VCF_LABELS = {"name": "姓名", "phone": "手机", "company": "公司名", "website": "网址"}
 _SEPARATOR_LABELS = {" ": "空格", "\t": "Tab", ",": "逗号", "、": "顿号", "|": "竖线"}
-# 手机号分隔符编辑时的转义显示（空格/Tab 无法直接看清）
-_PHONE_SEP_DISPLAY = {" ": "[空格]", "\t": "[Tab]"}
+# 手机号分隔符编辑时的转义显示（空格/Tab/换行 无法直接看清）
+_PHONE_SEP_DISPLAY = {" ": "[空格]", "\t": "[Tab]", "\n": "[换行]"}
 _PHONE_SEP_PARSE = {v: k for k, v in _PHONE_SEP_DISPLAY.items()}
 _ENCODING_LABELS = {
     "utf-8-bom": "UTF-8 带 BOM",
@@ -366,6 +366,7 @@ class SettingsDialog(QDialog):
         self._builtin_table.setColumnWidth(0, 160)
         self._builtin_table.setColumnWidth(1, 120)
         self._builtin_table.verticalHeader().setVisible(False)
+        self._builtin_table.horizontalHeader().setStretchLastSection(True)
         self._builtin_table.itemChanged.connect(self._on_builtin_item_changed)
         for col in self._settings.builtin_columns:
             self._append_builtin_row(col)
@@ -453,8 +454,15 @@ class SettingsDialog(QDialog):
         self._builtin_table.removeRow(row)
 
     def _build_buttons(self) -> QHBoxLayout:
-        """底部保存/取消按钮 + 快捷键说明。"""
+        """底部恢复默认/取消/保存按钮 + 快捷键说明。"""
         row = QHBoxLayout()
+        reset_btn = QPushButton("恢复默认设置")
+        reset_btn.setStyleSheet(
+            "background-color: transparent; color: #6B7280;"
+            "border: 1px solid #E5E7EB;",
+        )
+        reset_btn.clicked.connect(self._on_reset_defaults)
+        row.addWidget(reset_btn)
         hint = QLabel("快捷键：⌘ + , 打开设置")
         hint.setStyleSheet("color: #999999;")
         row.addWidget(hint)
@@ -466,6 +474,26 @@ class SettingsDialog(QDialog):
         row.addWidget(cancel_btn)
         row.addWidget(save_btn)
         return row
+
+    def _on_reset_defaults(self) -> None:
+        """恢复默认设置（二次确认 → 保存默认 → 轻提示 → 关闭）。"""
+        from core.settings import AppSettings
+        answer = QMessageBox.question(
+            self, "恢复默认设置",
+            "确定将所有设置恢复为默认值吗？当前设置将被覆盖。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            save_app_settings(AppSettings())
+        except WpsEnhancerError as e:
+            get_logger("ui.settings_dialog").error(f"恢复默认设置失败：{e}")
+            show_toast(self.parent() or self, f"重置失败：{e}", success=False)
+            return
+        show_toast(self.parent() or self, "重置成功")
+        self.accept()
 
     def _collect_builtin_columns(self) -> List[BuiltinColumn]:
         """从表格收集内置列（key 为空或占位提示的行跳过）。"""
@@ -529,12 +557,14 @@ class SettingsDialog(QDialog):
         return settings
 
     def _on_save(self) -> None:
-        """保存设置并关闭（写入失败时弹窗提示）。"""
-        if not self._collect_builtin_columns():
+        """保存设置并关闭（无变化不提示；写入失败时弹窗提示）。"""
+        new_settings = self._collect_settings()
+        if not new_settings.builtin_columns:
             QMessageBox.warning(self, "提示", "内置列不能为空")
             return
+        changed = new_settings != self._settings
         try:
-            save_app_settings(self._collect_settings())
+            save_app_settings(new_settings)
         except WpsEnhancerError as e:
             get_logger("ui.settings_dialog").error(str(e))
             QMessageBox.critical(self, "错误", str(e))
@@ -543,6 +573,9 @@ class SettingsDialog(QDialog):
             get_logger("ui.settings_dialog").exception(f"保存设置失败：{e}")
             QMessageBox.critical(self, "错误", f"保存设置失败：{e}\n详情见日志")
             return
-        # 保存成功：轻提示（显示在父窗口上，对话框关闭后仍可见）
+        if not changed:
+            self.accept()
+            return
+        # 设置发生变化：轻提示（显示在父窗口上，对话框关闭后仍可见）
         show_toast(self.parent() or self, "保存成功")
         self.accept()

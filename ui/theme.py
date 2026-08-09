@@ -27,7 +27,7 @@ QPushButton {{
     color: #FFFFFF;
     border: none;
     border-radius: 6px;
-    padding: 6px 16px;
+    padding: 6px 12px;
 }}
 QPushButton:hover {{ background-color: {PRIMARY_HOVER}; }}
 QPushButton:pressed {{ background-color: {PRIMARY_HOVER}; }}
@@ -40,6 +40,53 @@ QLineEdit, QPlainTextEdit, QComboBox {{
 }}
 QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {{
     border: 1px solid {PRIMARY};
+}}
+/* 下拉框箭头：border 三角替代系统默认箭头 */
+QComboBox::drop-down {{
+    border: none;
+    width: 26px;
+}}
+QComboBox::down-arrow {{
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {TEXT_SECONDARY};
+    margin-right: 8px;
+}}
+QComboBox QAbstractItemView {{
+    background-color: {CARD_BG};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    selection-background-color: {PRIMARY_LIGHT};
+    selection-color: {TEXT};
+    outline: none;
+}}
+/* 顶部工具栏（设置入口）：白底 + 底部细线，与全局主题协调 */
+QToolBar {{
+    background-color: {CARD_BG};
+    border: none;
+    border-bottom: 1px solid {BORDER};
+    padding: 4px 8px;
+    spacing: 4px;
+}}
+QToolBar::separator {{
+    background-color: {BORDER};
+    width: 1px;
+    margin: 4px 8px;
+}}
+QToolBar QToolButton {{
+    color: {TEXT_SECONDARY};
+    border-radius: 6px;
+    padding: 4px 10px;
+}}
+QToolBar QToolButton:hover {{
+    background-color: #F3F4F6;
+    color: {PRIMARY};
+}}
+QToolBar QToolButton:checked {{
+    background-color: {PRIMARY_LIGHT};
+    color: {PRIMARY};
 }}
 QTableWidget {{
     background-color: {CARD_BG};

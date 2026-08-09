@@ -126,8 +126,9 @@ class ContactsPanelUI:
         )
         self._template_table.setColumnWidth(0, 160)
         self._template_table.setColumnWidth(1, 260)
-        self._template_table.setColumnWidth(2, 210)
+        self._template_table.setColumnWidth(2, 240)
         self._template_table.verticalHeader().setVisible(False)
+        self._template_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self._template_table)
 
         # 当前模板摘要（列名 + 实际映射数）
@@ -160,6 +161,7 @@ class ContactsPanelUI:
             QAbstractItemView.DragDropMode.InternalMove,
         )
         self._mapping_table.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self._mapping_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self._mapping_table)
         return group
 
