@@ -4,8 +4,10 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QComboBox,
     QCheckBox, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
     QMessageBox, QInputDialog, QPlainTextEdit, QTabWidget, QWidget,
+    QFileDialog, QAbstractItemView,
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 
 from core.settings import (
     AppSettings, ENCODING_CHOICES, SEPARATOR_CHOICES, get_app_settings,
@@ -14,6 +16,7 @@ from core.settings import (
 from core.exceptions import WpsEnhancerError
 from core.logger import get_logger
 from core.template.config import BuiltinColumn
+from ui.components.toast import show_toast
 
 # vcf 可导出字段（v1 仅四个默认内置列）
 _VCF_KEYS = ["name", "phone", "company", "website"]
@@ -275,60 +278,179 @@ class SettingsDialog(QDialog):
         self._separator_edit.setEnabled(index == self._separator_custom_index)
 
     def _build_log_group(self) -> QGroupBox:
-        """日志分组。"""
+        """日志分组（详细开关 + 导出/清空）。"""
+        from core.app_paths import get_logs_dir
         group = QGroupBox("日志")
         layout = QVBoxLayout(group)
         self._log_debug_check = QCheckBox("详细日志（DEBUG，排查问题时开启）")
         self._log_debug_check.setChecked(self._settings.log_debug)
         layout.addWidget(self._log_debug_check)
+        hint = QLabel(f"日志目录：{get_logs_dir()}")
+        hint.setStyleSheet("color: #888888;")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        row = QHBoxLayout()
+        export_btn = QPushButton("导出日志文件")
+        export_btn.clicked.connect(self._on_export_logs)
+        clear_btn = QPushButton("删除日志记录")
+        clear_btn.clicked.connect(self._on_clear_logs)
+        row.addWidget(export_btn)
+        row.addWidget(clear_btn)
+        row.addStretch()
+        layout.addLayout(row)
         return group
 
+    def _on_export_logs(self) -> None:
+        """导出当天日志文件到用户选择的位置。"""
+        import shutil
+        from datetime import datetime as _dt
+        from core.app_paths import get_logs_dir
+        log_dir = get_logs_dir()
+        log_file = log_dir / f"wps_enhancer_{_dt.now().strftime('%Y%m%d')}.log"
+        if not log_file.exists():
+            show_toast(self, "暂无日志文件", success=False)
+            return
+        dest, _ = QFileDialog.getSaveFileName(
+            self, "导出日志文件", str(log_file),
+            "日志文件 (*.log);;所有文件 (*)",
+        )
+        if not dest:
+            return
+        try:
+            shutil.copy(log_file, dest)
+        except OSError as e:
+            get_logger("ui.settings_dialog").error(f"导出日志失败：{e}")
+            show_toast(self, f"导出失败：{e}", success=False)
+            return
+        show_toast(self, "日志已导出")
+
+    def _on_clear_logs(self) -> None:
+        """清空全部日志记录（二次确认；当天日志文件保留但内容清空）。"""
+        from core.app_paths import get_logs_dir
+        log_dir = get_logs_dir()
+        logs = sorted(log_dir.glob("wps_enhancer_*.log"))
+        if not logs:
+            show_toast(self, "暂无日志记录", success=False)
+            return
+        answer = QMessageBox.question(
+            self, "删除日志记录",
+            f"确定清空全部 {len(logs)} 个日志文件吗？此操作不可恢复。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        for f in logs:
+            try:
+                # 清空而非删文件：正在写入的 TimedRotatingFileHandler 持有旧 fd，
+                # 删文件会导致后续日志不再落盘；truncate 后 O_APPEND 继续从新末尾写
+                with open(f, "w", encoding="utf-8"):
+                    pass
+            except OSError:
+                pass
+        show_toast(self, "日志已清空")
+
     def _build_builtin_group(self) -> QGroupBox:
-        """内置列管理分组（增删改查）。"""
+        """内置列管理分组（增删改查；双击单元格输入，与模板表格一致）。"""
         group = QGroupBox("内置列（姓名/手机/公司名/网址）")
         layout = QVBoxLayout(group)
         self._builtin_table = QTableWidget(0, 3)
         self._builtin_table.setHorizontalHeaderLabels(["语义键", "显示名", "匹配别名（逗号分隔）"])
+        self._builtin_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed,
+        )
+        self._builtin_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows,
+        )
+        self._builtin_table.setColumnWidth(0, 160)
+        self._builtin_table.setColumnWidth(1, 120)
+        self._builtin_table.verticalHeader().setVisible(False)
+        self._builtin_table.itemChanged.connect(self._on_builtin_item_changed)
         for col in self._settings.builtin_columns:
             self._append_builtin_row(col)
+        self._append_builtin_placeholder()
         layout.addWidget(self._builtin_table)
 
         btn_row = QHBoxLayout()
-        add_btn = QPushButton("添加内置列")
-        add_btn.clicked.connect(self._on_add_builtin)
+        hint = QLabel("双击单元格编辑 / 双击占位行添加")
+        hint.setStyleSheet("color: #888888;")
+        btn_row.addWidget(hint)
+        btn_row.addStretch()
         del_btn = QPushButton("删除选中")
         del_btn.clicked.connect(self._on_delete_builtin)
-        btn_row.addWidget(add_btn)
         btn_row.addWidget(del_btn)
-        btn_row.addStretch()
         layout.addLayout(btn_row)
         return group
 
+    _PLACEHOLDER_TEXT = "双击输入语义键，添加内置列"
+
     def _append_builtin_row(self, col: BuiltinColumn) -> None:
-        """向内置列表格追加一行。"""
+        """向内置列表格追加一行（全部单元格可双击编辑）。"""
         row = self._builtin_table.rowCount()
         self._builtin_table.insertRow(row)
-        key_item = QTableWidgetItem(col.key)
-        key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self._builtin_table.setItem(row, 0, key_item)
+        self._builtin_table.setItem(row, 0, QTableWidgetItem(col.key))
         self._builtin_table.setItem(row, 1, QTableWidgetItem(col.label))
         self._builtin_table.setItem(row, 2, QTableWidgetItem("，".join(col.aliases)))
 
-    def _on_add_builtin(self) -> None:
-        """弹窗输入新内置列信息。"""
-        key, ok1 = QInputDialog.getText(self, "添加内置列", "语义键（英文，如 email）：")
-        if not ok1 or not key.strip():
+    def _append_builtin_placeholder(self) -> None:
+        """追加占位行：双击第一格输入语义键即可创建新内置列。"""
+        row = self._builtin_table.rowCount()
+        self._builtin_table.insertRow(row)
+        item = QTableWidgetItem(self._PLACEHOLDER_TEXT)
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsEditable)
+        item.setForeground(QColor("#999999"))
+        self._builtin_table.setItem(row, 0, item)
+        locked = Qt.ItemFlag.ItemIsEnabled
+        self._builtin_table.setItem(row, 1, QTableWidgetItem(""))
+        self._builtin_table.item(row, 1).setFlags(locked)
+        self._builtin_table.setItem(row, 2, QTableWidgetItem(""))
+        self._builtin_table.item(row, 2).setFlags(locked)
+
+    def _is_placeholder_row(self, row: int) -> bool:
+        """判断行是否为占位行（特征：第 1 列单元格不可编辑）。
+
+        不能按文本判断：itemChanged 触发时占位文本已被新输入替换。
+        """
+        cell = self._builtin_table.item(row, 1)
+        return cell is not None and not (
+            cell.flags() & Qt.ItemFlag.ItemIsEditable
+        )
+
+    def _on_builtin_item_changed(self, item: QTableWidgetItem) -> None:
+        """占位行第一格输入语义键后：该行转为真实行，并追加新占位行。"""
+        if item.column() != 0 or item.row() < 0:
             return
-        label, ok2 = QInputDialog.getText(self, "添加内置列", "显示名（如 邮箱）：")
-        if not ok2 or not label.strip():
+        if not self._is_placeholder_row(item.row()):
+            return  # 真实行编辑无需处理
+        text = item.text().strip()
+        if not text or text == self._PLACEHOLDER_TEXT:
             return
-        self._append_builtin_row(BuiltinColumn(key=key.strip(), label=label.strip()))
+        row = item.row()
+        self._builtin_table.blockSignals(True)
+        self._builtin_table.setItem(row, 0, QTableWidgetItem(text))
+        # 1/2 列恢复可编辑
+        for col in (1, 2):
+            cell = self._builtin_table.item(row, col)
+            cell.setFlags(cell.flags() | Qt.ItemFlag.ItemIsEditable)
+        self._builtin_table.blockSignals(False)
+        self._append_builtin_placeholder()
 
     def _on_delete_builtin(self) -> None:
-        """删除选中的内置列行。"""
+        """删除选中的内置列行（二次确认）。"""
         row = self._builtin_table.currentRow()
-        if row >= 0:
-            self._builtin_table.removeRow(row)
+        if row < 0 or self._is_placeholder_row(row):
+            show_toast(self, "请先选择要删除的内置列", success=False)
+            return
+        answer = QMessageBox.question(
+            self, "删除内置列",
+            f"确定删除内置列「{self._builtin_table.item(row, 0).text()}」吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._builtin_table.removeRow(row)
 
     def _build_buttons(self) -> QHBoxLayout:
         """底部保存/取消按钮 + 快捷键说明。"""
@@ -346,11 +468,11 @@ class SettingsDialog(QDialog):
         return row
 
     def _collect_builtin_columns(self) -> List[BuiltinColumn]:
-        """从表格收集内置列（key 为空的行跳过）。"""
+        """从表格收集内置列（key 为空或占位提示的行跳过）。"""
         columns: List[BuiltinColumn] = []
         for row in range(self._builtin_table.rowCount()):
             key = self._builtin_table.item(row, 0).text().strip()
-            if not key:
+            if not key or key == self._PLACEHOLDER_TEXT:
                 continue
             label = self._builtin_table.item(row, 1).text().strip() or key
             aliases = [
@@ -421,4 +543,6 @@ class SettingsDialog(QDialog):
             get_logger("ui.settings_dialog").exception(f"保存设置失败：{e}")
             QMessageBox.critical(self, "错误", f"保存设置失败：{e}\n详情见日志")
             return
+        # 保存成功：轻提示（显示在父窗口上，对话框关闭后仍可见）
+        show_toast(self.parent() or self, "保存成功")
         self.accept()

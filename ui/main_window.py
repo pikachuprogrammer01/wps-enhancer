@@ -89,10 +89,10 @@ class MainWindow(QMainWindow):
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setCursor(Qt.CursorShape.PointingHandCursor)
         card.setStyleSheet(
-            "QFrame#featureCard { background: white; border: 1px solid #E0E0E0;"
+            "QFrame#featureCard { background: white; border: 1px solid #E5E7EB;"
             " border-radius: 10px; }"
-            "QFrame#featureCard:hover { border: 2px solid #4A90D9;"
-            " background: #F7FAFD; }"
+            "QFrame#featureCard:hover { border: 2px solid #3B82F6;"
+            " background: #F5F9FF; }"
         )
         layout = QHBoxLayout(card)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -114,7 +114,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(text_layout, 1)
 
         arrow = QLabel("进入 →")
-        arrow.setStyleSheet("color: #4A90D9; font-size: 14px;")
+        arrow.setStyleSheet("color: #3B82F6; font-size: 14px;")
         layout.addWidget(arrow)
 
         # 整卡左键点击进入功能（不再依赖按钮）

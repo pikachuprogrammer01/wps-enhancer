@@ -26,6 +26,8 @@ def main() -> None:
     # 预创建可写数据目录（模板/设置存放），确保首次保存模板可用
     get_data_dir().mkdir(parents=True, exist_ok=True)
     app = QApplication(sys.argv)
+    from ui.theme import apply_global_theme
+    apply_global_theme(app)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
