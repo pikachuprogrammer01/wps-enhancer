@@ -60,27 +60,32 @@ jobs:
           ARCH=$(uname -m)
           zip -r -y "WPSEnhancer-macOS-${ARCH}.zip" "WPS增强工具.app"
 
-      - name: Cleanup existing release
-        # 根治旧资产混入：发布前删除同名旧 Release（资产随 Release 删除），从零重建
+      - name: Generate changelog body
+        # Release 描述 = 本次增量 changelog + 旧描述（合并，不替换）。
+        # 增量区间：当前 tag 的父链上最近 tag（git describe，不取版本号
+        # 最大的 tag——force 移动后它会指错，曾致描述只剩几行）；
+        # 无父 tag（首个版本/tag 重建）→ 全量（相对完整的功能列表）。
+        # 仅用户可见变更进描述：feat/fix；ci/chore/docs/build 自动过滤。
+        id: changelog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ inputs.tag_name || github.ref_name }}"
-          gh release delete "$TAG" --yes 2>/dev/null || true
-
-      - name: Generate changelog body
-        # 从上一个 tag 到当前 tag 的 commit 自动生成 Release 描述。
-        # 仅用户可见变更进描述：feat（新特性）/ fix（问题修复）；
-        # ci/chore/docs/build 等内部变更自动过滤（含 fix(ci) 这类构建 scope），
-        # 版本描述只体现 bug 修复与新特性，不掺构建流程内容。
-        id: changelog
-        run: |
-          TAG="${{ inputs.tag_name || github.ref_name }}"
-          PREV=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || true)
-          if [ -n "$PREV" ]; then
+          # 父版本判定（三层）：
+          # 1. 当前 tag 的父链上最近 tag（git describe，最准确）
+          # 2. 回退：版本号最大的其他 tag（describe 失败时，如 main 链无 tag）
+          # 3. 祖先校验：merge-base 必须是 PREV 本身（PREV 为 TAG 祖先）才走
+          #    增量区间；否则（PREV 是后代/无关，如 tag 重建场景）→ 全量，
+          #    避免区间错乱导致描述只剩几行
+          PREV=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          if [ -z "$PREV" ]; then
+            PREV=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || true)
+          fi
+          if [ -n "$PREV" ] && \
+             [ "$(git merge-base "$PREV" "$TAG")" = "$(git rev-parse "$PREV")" ]; then
             RANGE="$PREV..$TAG"
           else
-            RANGE="HEAD"  # 首个发布：取全部提交
+            RANGE="$(git rev-list --max-parents=0 HEAD)..HEAD"  # 首版/重建：全量
           fi
           # 先取 %s → 仅按 subject 过滤（--grep 会匹配 message 全文，
           # body 中含"feat 开头"的行会污染列表）→ 过滤构建类 scope → 按标题去重
@@ -90,6 +95,13 @@ jobs:
           if [ -n "$FEAT" ]; then printf -v BODY '%s## ✨ 新特性\n\n%s\n\n' "$BODY" "$FEAT"; fi
           if [ -n "$FIX" ]; then printf -v BODY '%s## 🐛 问题修复\n\n%s\n\n' "$BODY" "$FIX"; fi
           if [ -z "$BODY" ]; then BODY="本次更新无用户可见变更。"; fi
+          # 合并旧描述（须在 Cleanup 删除 Release 之前读取）：
+          # 增量模式（有真实父版本）→ 旧描述追加在后（不替换，历史不丢）；
+          # 全量模式（首版/重建）→ 全量已含全部历史，不拼接避免重复。
+          PREV_BODY=$(gh release view "$TAG" --json body -q .body 2>/dev/null || true)
+          if [ "$RANGE" = "$PREV..$TAG" ] && [ -n "$PREV_BODY" ]; then
+            printf -v BODY '%s\n---\n\n%s' "$BODY" "$PREV_BODY"
+          fi
           echo "BODY_LEN=${#BODY}"  # 诊断输出（日志可查）
           EOF=$(openssl rand -hex 16)
           {
@@ -97,6 +109,15 @@ jobs:
             echo "$BODY"
             echo "$EOF"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup existing release
+        # 根治旧资产混入：发布前删除同名旧 Release（资产随 Release 删除），从零重建
+        # 必须在 Generate changelog 之后：旧描述需在删除前读取（合并用）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          gh release delete "$TAG" --yes 2>/dev/null || true
 
       - name: Publish Release (macOS)
         uses: softprops/action-gh-release@v2
@@ -164,12 +185,21 @@ jobs:
           git fetch origin main
           git fetch origin --tags
           git checkout -b update-main origin/main
-          # 更新说明取本次发布 changelog（前 800 字符），失败则为空
+          # 更新说明取本次发布增量 changelog（前 800 字符；父版本判定与
+          # Release 描述一致：describe → 版本号最大回退 → merge-base 祖先
+          # 校验，不满足时全量兜底）
           NOTES=""
-          PREV=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || true)
-          if [ -n "$PREV" ]; then
-            NOTES=$(git log "$PREV..HEAD" --pretty=format:"%s" --grep="^feat" --grep="^fix" --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          if [ -z "$PREV" ]; then
+            PREV=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || true)
           fi
+          if [ -n "$PREV" ] && \
+             [ "$(git merge-base "$PREV" HEAD)" = "$(git rev-parse "$PREV")" ]; then
+            RANGE="$PREV..HEAD"
+          else
+            RANGE="$(git rev-list --max-parents=0 HEAD)..HEAD"
+          fi
+          NOTES=$(git log "$RANGE" --pretty=format:"%s" --grep="^feat" --grep="^fix" --no-merges | awk '!seen[$0]++ {print "- " $0}' || true)
           python3 - "$TAG" "$REPO" "$NOTES" <<'PYEOF'
           import json, sys
           tag, repo, notes = sys.argv[1], sys.argv[2], sys.argv[3][:800]
