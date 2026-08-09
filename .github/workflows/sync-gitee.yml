@@ -8,6 +8,11 @@ name: Sync to Gitee
 on:
   push:
     branches: [main]
+  # Release workflow 完成后自动同步：其 update.json 提交由 GITHUB_TOKEN
+  # 推送，受 GitHub 防递归限制不会触发 push 事件，需 workflow_run 兜底
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
