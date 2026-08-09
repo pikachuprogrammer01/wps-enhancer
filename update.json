@@ -1,10 +1,10 @@
 {
-  "version": "v1.0.0",
+  "version": "v1.1.0",
   "urls": {
-    "macos-arm64": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.0.0/WPSEnhancer-macOS-arm64.zip",
-    "macos-x86_64": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.0.0/WPSEnhancer-macOS-x86_64.zip",
-    "windows-x86_64": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.0.0/WPSEnhancer-Windows-x86_64.zip",
-    "windows-x86": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.0.0/WPSEnhancer-Windows-x86.zip"
+    "macos-arm64": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.1.0/WPSEnhancer-macOS-arm64.zip",
+    "macos-x86_64": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.1.0/WPSEnhancer-macOS-x86_64.zip",
+    "windows-x86_64": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.1.0/WPSEnhancer-Windows-x86_64.zip",
+    "windows-x86": "https://github.com/pikachuprogrammer01/wps-enhancer/releases/download/v1.1.0/WPSEnhancer-Windows-x86.zip"
   },
-  "notes": "- fix(update): 下载完成引导改用 QThread 信号回主线程"
+  "notes": ""
 }
