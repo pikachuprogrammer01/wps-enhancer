@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import QApplication
 
 from core.updater import (
     ReleaseInfo, UpdaterError, check_latest_release, compare_versions,
-    download_file,
+    download_file, verify_zip_integrity,
 )
 
 
@@ -573,3 +573,24 @@ class DownloadRetryTest(unittest.TestCase):
                     download_file("https://x/pkg.zip", dest, retries=2)
             self.assertIn("下载更新包失败", str(ctx.exception))
             self.assertEqual(urlopen.call_count, 3)
+
+
+class ZipIntegrityTest(unittest.TestCase):
+    """更新包完整性校验：完整包通过 / 坏包拦截。"""
+
+    def test_valid_zip_passes(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pkg.zip"
+            with zipfile.ZipFile(path, "w") as zf:
+                zf.writestr("app/main.py", "print('hi')")
+                zf.writestr("app/data.txt", "hello")
+            verify_zip_integrity(path)  # 不应抛异常
+
+    def test_corrupt_zip_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "bad.zip"
+            path.write_bytes(b"PK\x03\x04 not a real zip at all")
+            with self.assertRaises(UpdaterError) as ctx:
+                verify_zip_integrity(path)
+        self.assertIn("损坏", str(ctx.exception))

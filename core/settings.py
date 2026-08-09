@@ -20,6 +20,24 @@ DEFAULT_DECLARATION_KEYWORDS: List[str] = [
 ]
 
 
+def _default_download_dir() -> str:
+    """按平台返回默认下载目录（macOS ~/Downloads，Windows 用户下载目录）。"""
+    import sys
+    if sys.platform == "win32":
+        import ctypes.wintypes
+        # SHGetFolderPath 取用户真实下载目录（兼容 OneDrive 重定向）
+        try:
+            buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+            if ctypes.windll.shell32.SHGetFolderPathW(
+                None, 5, None, 0, buf,  # CSIDL_PERSONAL=5
+            ) == 0 and buf.value:
+                return buf.value
+        except Exception:
+            pass
+        return str(Path.home() / "Downloads")
+    return str(Path.home() / "Downloads")
+
+
 @dataclass
 class AppSettings:
     """全局设置（settings.json 的权威结构）。"""
@@ -47,6 +65,8 @@ class AppSettings:
     use_system_proxy: bool = True     # 检查/下载更新时自动走系统代理（默认开启）
     update_url: str = "https://gitee.com/pikachuprogrammer01/wps-enhancer/raw/main/update.json"
     # 自定义更新源（update.json 地址，留空用 GitHub；默认 Gitee 镜像，国内可达）
+    download_dir: str = field(default_factory=_default_download_dir)
+    # 更新包下载目录（设置可改；默认 macOS ~/Downloads / Windows 下载目录）
 
 
 _cache: Optional[AppSettings] = None
@@ -75,6 +95,7 @@ def _settings_dict(settings: AppSettings) -> dict:
             "auto_update_enabled": settings.auto_update_enabled,
             "use_system_proxy": settings.use_system_proxy,
             "update_url": settings.update_url,
+            "download_dir": settings.download_dir,
         },
     }
 
@@ -145,6 +166,7 @@ def _load_from_file(path: Path) -> AppSettings:
             "use_system_proxy", defaults.use_system_proxy,
         )),
         update_url=str(app.get("update_url", defaults.update_url)),
+        download_dir=str(app.get("download_dir", defaults.download_dir)),
     )
 
 

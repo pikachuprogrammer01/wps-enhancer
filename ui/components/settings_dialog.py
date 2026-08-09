@@ -87,6 +87,14 @@ class SettingsDialog(QDialog):
         tip.setWordWrap(True)
         tip.setStyleSheet("color: #888888; font-size: 11px;")
         layout.addWidget(tip)
+        dir_row = QHBoxLayout()
+        self._download_dir_edit = QLineEdit(self._settings.download_dir)
+        dir_row.addWidget(QLabel("更新包下载目录"))
+        dir_row.addWidget(self._download_dir_edit, 1)
+        browse_btn = QPushButton("浏览…")
+        browse_btn.clicked.connect(self._on_browse_download_dir)
+        dir_row.addWidget(browse_btn)
+        layout.addLayout(dir_row)
         row = QHBoxLayout()
         row.addWidget(QLabel(f"当前版本：v{APP_VERSION}"))
         row.addStretch()
@@ -116,6 +124,19 @@ class SettingsDialog(QDialog):
             use_proxy=self._settings.use_system_proxy,
             update_url=self._update_url_edit.text().strip() or None,
         )
+
+    def _on_browse_download_dir(self) -> None:
+        """浏览选择更新包下载目录（异常静默兜底，不影响设置流程）。"""
+        try:
+            from PyQt6.QtWidgets import QFileDialog
+            start = self._download_dir_edit.text().strip() or str(Path.home())
+            path = QFileDialog.getExistingDirectory(
+                self, "选择更新包下载目录", start,
+            )
+            if path:
+                self._download_dir_edit.setText(path)
+        except Exception as e:
+            get_logger("ui.settings_dialog").warning(f"选择下载目录失败：{e}")
 
     def _build_import_tab(self) -> QWidget:
         """导入处理：手机号处理 + 文件处理（声明检测）。"""
@@ -621,6 +642,7 @@ class SettingsDialog(QDialog):
             auto_update_enabled=self._auto_update_check.isChecked(),
             use_system_proxy=self._proxy_check.isChecked(),
             update_url=self._update_url_edit.text().strip(),
+            download_dir=self._download_dir_edit.text().strip(),
         )
         return settings
 

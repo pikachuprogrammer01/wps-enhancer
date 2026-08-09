@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import QMessageBox, QWidget
 from core.logger import get_logger
 from core.updater import (
     ReleaseInfo, UpdaterError, check_latest_release, compare_versions,
-    download_file,
+    download_file, verify_zip_integrity,
 )
 from core.version import APP_VERSION
 
@@ -129,14 +129,21 @@ def _start_download(parent: QWidget, info: ReleaseInfo) -> None:
             f"{info.html_url}",
         )
         return
-    dest = Path.home() / "Downloads" / f"WPS增强工具_{info.tag_name}.zip"
+    download_dir = _resolve_download_dir()
+    dest = download_dir / f"WPS增强工具_{info.tag_name}.zip"
+    dest.parent.mkdir(parents=True, exist_ok=True)
 
     def worker() -> None:
         try:
             download_file(info.zip_url, dest)
+            verify_zip_integrity(dest)  # 坏包直接拦截，避免替换损坏的更新包
             result: tuple = ("ok", str(dest))
         except UpdaterError as e:
             get_logger("ui.update_flow").warning(f"下载更新包失败：{e}")
+            try:
+                dest.unlink(missing_ok=True)  # 清理损坏的半成品
+            except OSError:
+                pass
             result = ("error", str(e))
         QTimer.singleShot(
             0, lambda: _handle_download_done(parent, result),
@@ -145,13 +152,43 @@ def _start_download(parent: QWidget, info: ReleaseInfo) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
+def _resolve_download_dir() -> Path:
+    """返回更新包下载目录（设置可改，默认系统下载目录）。"""
+    try:
+        from core.settings import get_app_settings
+        raw = get_app_settings().download_dir
+        if raw.strip():
+            return Path(raw.strip()).expanduser()
+    except Exception:
+        pass
+    return Path.home() / "Downloads"
+
+
+def _reveal_in_finder(path: str) -> None:
+    """在系统文件管理器中定位文件（macOS Finder / Windows 资源管理器）。"""
+    import subprocess
+    import sys
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", "/select,", path])
+        else:
+            subprocess.Popen(["open", "-R", path])
+    except OSError:
+        pass  # 打不开文件管理器不影响主流程，静默
+
+
 def _handle_download_done(parent: QWidget, result: tuple) -> None:
-    """下载完成提示替换指引。"""
+    """下载完成：校验已通过，提示替换指引 + 打开所在文件夹按钮。"""
     status, payload = result
     if status == "error":
         QMessageBox.warning(parent, "下载失败", payload)
         return
-    QMessageBox.information(
-        parent, "更新包已下载",
-        f"更新包已保存到：\n{payload}\n\n{_replace_guide()}",
-    )
+    box = QMessageBox(parent)
+    box.setWindowTitle("更新包已下载")
+    box.setIcon(QMessageBox.Icon.Information)
+    box.setText(f"更新包已保存到：\n{payload}\n\n{_replace_guide()}")
+    box.addButton("打开所在文件夹", QMessageBox.ButtonRole.ActionRole)
+    box.addButton(QMessageBox.StandardButton.Ok)
+    box.exec()
+    if box.buttonRole(box.clickedButton()) == QMessageBox.ButtonRole.ActionRole:
+        _reveal_in_finder(payload)

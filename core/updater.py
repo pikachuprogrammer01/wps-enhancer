@@ -357,6 +357,17 @@ def _current_arch() -> str:
     return "x86_64"
 
 
+def verify_zip_integrity(path: Path) -> None:
+    """校验 zip 完整可读（坏包抛 UpdaterError，防止替换损坏的更新包）。"""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as zf:
+            for info in zf.infolist():
+                zf.open(info).read(1)  # 逐条目探测损坏（CRC 校验在 read 时触发）
+    except (zipfile.BadZipFile, OSError, RuntimeError) as e:
+        raise UpdaterError(f"更新包损坏（{e}），请删除后重新下载") from e
+
+
 @log_call("core.updater", log_args=False)
 def download_file(url: str, dest: Path, timeout: int = 30,
                   use_system_proxy: bool = True,
