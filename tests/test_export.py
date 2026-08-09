@@ -130,6 +130,85 @@ class CsvTest(unittest.TestCase):
         with self.assertRaises(FileReadError):
             get_reader(str(path)).read_sheet(str(path), "allempty")
 
+    def test_read_semicolon_delimiter(self):
+        """分号分隔 CSV（中文环境常见）应正确分列。"""
+        path = self._write("semi.csv", "姓名;手机号;公司\n张三;138;测试公司\n")
+        data = get_reader(str(path)).read_sheet(str(path), "semi")
+        self.assertEqual(data.headers, ["姓名", "手机号", "公司"])
+        self.assertEqual(data.rows[0]["手机号"], "138")
+        self.assertEqual(data.rows[0]["公司"], "测试公司")
+
+    def test_read_tab_delimiter(self):
+        """制表符分隔 CSV 应正确分列。"""
+        path = self._write("tab.csv", "姓名\t手机号\n张三\t138\n")
+        data = get_reader(str(path)).read_sheet(str(path), "tab")
+        self.assertEqual(data.headers, ["姓名", "手机号"])
+        self.assertEqual(data.rows[0]["手机号"], "138")
+
+    def test_read_pipe_delimiter(self):
+        """竖线分隔 CSV 应正确分列。"""
+        path = self._write("pipe.csv", "姓名|手机号\n张三|138\n")
+        data = get_reader(str(path)).read_sheet(str(path), "pipe")
+        self.assertEqual(data.headers, ["姓名", "手机号"])
+
+    def test_read_semicolon_gbk(self):
+        """GBK + 分号分隔组合（Excel 另存为场景）应正确分列解码。"""
+        path = self._write(
+            "semi_gbk.csv", "姓名;手机号\n李四;139\n", encoding="gbk",
+        )
+        data = get_reader(str(path)).read_sheet(str(path), "semi_gbk")
+        self.assertEqual(data.headers, ["姓名", "手机号"])
+        self.assertEqual(data.rows[0]["姓名"], "李四")
+
+    def test_read_csv_skips_declaration(self):
+        """csv 数据源同样支持声明行检测与跳过。"""
+        path = self._write(
+            "decl.csv",
+            "数据来源：企查查导出\n\n姓名,手机号\n张三,138\n",
+        )
+        data = get_reader(str(path)).read_sheet(
+            str(path), "decl", skip_declaration=True,
+            declaration_keywords=["企查查"],
+        )
+        self.assertTrue(data.declaration_skipped)
+        self.assertEqual(data.headers, ["姓名", "手机号"])
+        self.assertEqual(len(data.rows), 1)
+
+    def test_read_txt_source(self):
+        """txt 文件作为数据源（制表符分隔）读取。"""
+        path = self._write("a.txt", "姓名\t手机号\n张三\t138\n")
+        data = get_reader(str(path)).read_sheet(str(path), "a")
+        self.assertEqual(data.headers, ["姓名", "手机号"])
+        self.assertEqual(data.rows[0]["手机号"], "138")
+
+    def test_read_with_explicit_separator(self):
+        """指定分号分隔读取（与文件一致）。"""
+        path = self._write("s.csv", "姓名;手机号\n张三;138\n")
+        data = get_reader(str(path)).read_sheet(
+            str(path), "s", separator=";",
+        )
+        self.assertEqual(data.headers, ["姓名", "手机号"])
+
+    def test_read_wrong_separator_raises(self):
+        """指定分隔符在文件中不存在 → 明确报错（不静默错位）。"""
+        path = self._write("w.csv", "姓名;手机号\n张三;138\n")
+        with self.assertRaisesRegex(FileReadError, "未发现「逗号 ,」分隔符"):
+            get_reader(str(path)).read_sheet(str(path), "w", separator=",")
+
+    def test_read_wrong_encoding_raises(self):
+        """指定编码与文件不符 → 明确报错。"""
+        path = self._write("e.csv", "姓名,手机号\n张三,138\n", encoding="utf-8")
+        with self.assertRaisesRegex(FileReadError, "不是 gbk 编码"):
+            get_reader(str(path)).read_sheet(str(path), "e", encoding="gbk")
+
+    def test_read_extra_columns_raises(self):
+        """数据行列数超出表头 → 明确报错（含行号与列数）。"""
+        path = self._write(
+            "x.csv", "姓名,手机号\n张三,138,备注\n",
+        )
+        with self.assertRaisesRegex(FileReadError, "第 2 行有 3 列"):
+            get_reader(str(path)).read_sheet(str(path), "x")
+
     def test_write_bom_and_rows(self):
         path = self.tmp / "out.csv"
         request = WriteRequest(

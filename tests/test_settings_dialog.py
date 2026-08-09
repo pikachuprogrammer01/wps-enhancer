@@ -74,7 +74,10 @@ class SettingsDialogExtTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             log_dir = Path(tmp) / "logs"
             log_dir.mkdir()
-            log_file = log_dir / "wps_enhancer_20260809.log"
+            from datetime import datetime
+            log_file = log_dir / (
+                f"wps_enhancer_{datetime.now().strftime('%Y%m%d')}.log"
+            )
             log_file.write_text("test log", encoding="utf-8")
             dest = Path(tmp) / "out.log"
             dlg = self._make_dialog()

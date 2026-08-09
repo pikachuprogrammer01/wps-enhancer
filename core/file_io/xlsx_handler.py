@@ -40,8 +40,12 @@ class XlsxReader(BaseReader):
         self, file_path: str, sheet_name: str,
         skip_declaration: bool = False,
         declaration_keywords: Optional[List[str]] = None,
+        separator: Optional[str] = None, encoding: Optional[str] = None,
     ) -> SheetData:
-        """读取指定 Sheet 的表头和数据行（可选剔除首行声明，第一行即表头）。"""
+        """读取指定 Sheet 的表头和数据行（可选剔除首行声明，第一行即表头）。
+
+        separator/encoding 仅 csv/txt 数据源使用，xlsx 忽略。
+        """
         try:
             wb = openpyxl.load_workbook(file_path, data_only=True)
             ws = wb[sheet_name]

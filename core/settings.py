@@ -61,6 +61,8 @@ class AppSettings:
     csv_encoding: str = "utf-8-bom"
     txt_encoding: str = "utf-8-bom"
     txt_separator: str = " "
+    source_separator: str = "auto"    # 数据源（csv/txt）分隔符：auto/,/;/tab/|
+    source_encoding: str = "auto"     # 数据源（csv/txt）编码：auto/utf-8/gbk/utf-16
     vcf_fields: List[str] = field(default_factory=lambda: ["name", "phone", "company", "website"])
     vcf_name_prefix: str = "vcf_"   # vcf 导出姓名前缀（纯文本，如「客户-」）
     vcf_name_suffix: str = ""
@@ -98,6 +100,8 @@ def _settings_dict(settings: AppSettings) -> dict:
             "csv_encoding": settings.csv_encoding,
             "txt_encoding": settings.txt_encoding,
             "txt_separator": settings.txt_separator,
+            "source_separator": settings.source_separator,
+            "source_encoding": settings.source_encoding,
             "vcf_fields": list(settings.vcf_fields),
             "vcf_name_prefix": settings.vcf_name_prefix,
             "vcf_name_suffix": settings.vcf_name_suffix,
@@ -161,6 +165,8 @@ def _load_from_file(path: Path) -> AppSettings:
         csv_encoding=str(app.get("csv_encoding", defaults.csv_encoding)),
         txt_encoding=str(app.get("txt_encoding", defaults.txt_encoding)),
         txt_separator=str(app.get("txt_separator", defaults.txt_separator)),
+        source_separator=str(app.get("source_separator", defaults.source_separator)),
+        source_encoding=str(app.get("source_encoding", defaults.source_encoding)),
         vcf_fields=[str(f) for f in app.get("vcf_fields", list(defaults.vcf_fields))],
         vcf_name_prefix=str(app.get("vcf_name_prefix", defaults.vcf_name_prefix)),
         vcf_name_suffix=str(app.get("vcf_name_suffix", defaults.vcf_name_suffix)),

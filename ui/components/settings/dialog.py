@@ -136,6 +136,8 @@ class SettingsDialog(
             phone_highlight=self._highlight_check.isChecked(),
             phone_merge=self._merge_check.isChecked(),
             phone_separators=self._collect_phone_separators(),
+            source_separator=self._source_sep_combo.currentData(),
+            source_encoding=self._source_enc_combo.currentData(),
             csv_encoding=self._encoding_combo.currentData(),
             txt_encoding=self._txt_encoding_combo.currentData(),
             txt_separator=separator,

@@ -92,8 +92,13 @@ class BaseReader(ABC):
         self, file_path: str, sheet_name: str,
         skip_declaration: bool = False,
         declaration_keywords: Optional[List[str]] = None,
+        separator: Optional[str] = None,
+        encoding: Optional[str] = None,
     ) -> SheetData:
-        """读取指定 Sheet 的表头和数据行；skip_declaration 时按声明规则剔除首行声明。"""
+        """读取指定 Sheet 的表头和数据行；skip_declaration 时按声明规则剔除首行声明。
+
+        separator/encoding 仅对 csv/txt 数据源生效（None=自动检测）。
+        """
         ...
 
 
@@ -117,6 +122,9 @@ def get_reader(file_path: str) -> BaseReader:
         return XlsReader()
     if suffix == ".csv":
         from core.file_io.csv_handler import CsvReader
+        return CsvReader()
+    if suffix == ".txt":
+        from core.file_io.csv_handler import CsvReader  # txt 复用分隔文本读取
         return CsvReader()
     raise FileReadError(f"不支持的文件格式：{suffix}")
 

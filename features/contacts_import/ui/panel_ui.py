@@ -84,7 +84,8 @@ class ContactsPanelUI:
         group = QGroupBox("文件选择")
         layout = QVBoxLayout(group)
         self._file_picker = FilePicker(
-            "源文件", "表格文件 (*.xls *.xlsx *.csv)",
+            "源文件",
+            "Excel 文件 (*.xls *.xlsx);;CSV 文件 (*.csv);;TXT 文件 (*.txt)",
         )
         row = QHBoxLayout()
         row.addWidget(QLabel("Sheet"))
