@@ -84,7 +84,14 @@ jobs:
         shell: powershell
         run: |
           # 资产名带架构（windows-latest 为 x64，动态获取不假设）
-          $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'AMD64') { 'x86_64' } else { $env:PROCESSOR_ARCHITECTURE.ToLower() }
+          # WOW64 下 32 位 PowerShell 的 PROCESSOR_ARCHITECTURE 是 x86，
+          # 须优先取 PROCESSOR_ARCHITEW6432 判断真实架构
+          $envarch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+          $arch = switch ($envarch) {
+              'AMD64' { 'x86_64' }
+              'ARM64' { 'arm64' }
+              default { 'x86' }
+          }
           Compress-Archive -Path dist/WPSEnhancer/* -DestinationPath "dist/WPSEnhancer-Windows-$arch.zip"
 
       - name: Publish Release (Windows)

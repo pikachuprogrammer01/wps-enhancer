@@ -62,10 +62,10 @@ PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-cache python3.12 -m PyInstaller "WPS增�
    ```bash
    git tag v1.1.0 && git push origin v1.1.0
    ```
-3. 发布物：`WPSEnhancer-macOS-arm64.zip`（M 芯片）/ `WPSEnhancer-Windows-x86_64.zip`（x86 主流架构），资产名带架构便于区分
+3. 发布物：`WPSEnhancer-macOS-arm64.zip`（M 芯片）/ `WPSEnhancer-macOS-x86_64.zip`（Intel）/ `WPSEnhancer-Windows-x86_64.zip`（x64）/ `WPSEnhancer-Windows-x86.zip`（32 位），资产名带平台+架构便于区分
 4. 用户端（Mac / Windows）：设置 → 更新 → 「检查更新」（或启动时自动检查，可在设置中关闭）→ 客户端按本机平台+架构自动匹配资产下载 → 按指引替换
 
-> 架构说明：资产名由 CI runner 架构动态生成（macOS `uname -m`、Windows `PROCESSOR_ARCHITECTURE`）。客户端匹配优先级：平台+架构精确匹配 → 回退仅平台（兼容无架构标签的旧资产）。
+> 架构说明：资产名由 CI runner 架构动态生成（macOS `uname -m`；Windows 优先 `PROCESSOR_ARCHITEW6432`，回退 `PROCESSOR_ARCHITECTURE`，映射 `AMD64→x86_64`、`ARM64→arm64`、其余→`x86`）。客户端 `_current_arch()` 同样区分 `arm64` / `x86_64` / `x86` 三档（32 位 Windows 不会误下 64 位包），文件名按 `-` 分词段精确匹配（x86 不会误中 x86_64 资产）。匹配优先级：平台+架构精确匹配 → 回退仅平台（兼容无架构标签的旧资产）。
 > 重新发布同一 tag 时旧资产不会自动删除，请先手动清理 Releases 页面残留的旧资产（如 `WPS.-macOS.zip`、`WPS.exe`）。
 
 > ⚠️ 当前 app 为 ad-hoc 签名，从 GitHub 下载的 .app 首次打开需右键 → 打开（或 `xattr -d com.apple.quarantine <路径>`）绕过 Gatekeeper。

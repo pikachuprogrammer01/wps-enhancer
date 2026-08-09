@@ -107,6 +107,41 @@ class CheckReleaseTest(unittest.TestCase):
             info = check_latest_release(platform="macos", arch="arm64")
         self.assertTrue(info.zip_url.endswith("mac.zip"))
 
+    def test_asset_match_no_x86_substring_mismatch(self):
+        """x86 与 x86_64 段精确匹配：32 位请求不能误中 64 位资产，反之亦然。"""
+        payload = {
+            "tag_name": "v1.1.0",
+            "html_url": "https://x",
+            "published_at": "2026-08-09T00:00:00Z",
+            "assets": [
+                {"name": "WPSEnhancer-Windows-x86_64.zip",
+                 "browser_download_url": "https://x/win-x64.zip", "size": 1},
+                {"name": "WPSEnhancer-Windows-x86.zip",
+                 "browser_download_url": "https://x/win-x86.zip", "size": 2},
+            ],
+        }
+        with mock.patch("core.updater.urllib.request.urlopen") as urlopen:
+            resp = mock.MagicMock()
+            resp.status = 200
+            resp.read.return_value = __import__("json").dumps(payload).encode()
+            urlopen.return_value.__enter__.return_value = resp
+            win64 = check_latest_release(platform="windows", arch="x86_64")
+            win32 = check_latest_release(platform="windows", arch="x86")
+        self.assertTrue(win64.zip_url.endswith("win-x64.zip"))
+        self.assertTrue(win32.zip_url.endswith("win-x86.zip"))
+
+    def test_current_arch_mapping(self):
+        """架构标签映射：arm64 / x86_64 / x86（32 位）必须区分。"""
+        from core import updater
+        cases = {
+            "aarch64": "arm64", "arm64": "arm64",
+            "AMD64": "x86_64", "x86_64": "x86_64",
+            "x86": "x86", "i386": "x86", "i686": "x86",
+        }
+        for machine, expect in cases.items():
+            with mock.patch("core.updater.platform.machine", return_value=machine):
+                self.assertEqual(updater._current_arch(), expect, machine)
+
     def test_check_latest_release_http_error(self):
         """404（暂无 Release）与 500 分别给出明确错误。"""
         import urllib.error

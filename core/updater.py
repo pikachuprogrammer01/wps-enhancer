@@ -7,6 +7,7 @@
 """
 
 import json
+import platform
 import ssl
 import urllib.error
 import urllib.request
@@ -69,7 +70,7 @@ def check_latest_release(
     """查询 GitHub Releases 最新版本（网络/解析失败抛 UpdaterError）。
 
     platform：更新包平台标签（"macos"/"windows"，默认按当前系统）；
-    arch：架构标签（"arm64"/"x86_64"，默认按当前机器）。
+    arch：架构标签（"arm64"/"x86_64"/"x86"，默认按当前机器）。
     资产匹配：优先「平台+架构」精确匹配，回退「仅平台」匹配（兼容旧资产）。
     """
     platform = platform or _current_platform()
@@ -116,14 +117,18 @@ def check_latest_release(
 
 
 def _find_asset(assets: list, platform: str, arch: Optional[str]) -> Optional[dict]:
-    """在资产列表中按平台（+可选架构）匹配 zip 资产。"""
+    """在资产列表中按平台（+可选架构）匹配 zip 资产。
+
+    按文件名段精确匹配（`-` 分词），避免 x86 ⊂ x86_64 之类的子串误匹配。
+    """
     for asset in assets:
         name = str(asset.get("name", "")).lower()
         if not name.endswith(".zip"):
             continue
-        if platform not in name:
+        parts = name[:-4].split("-")  # WPSEnhancer-Windows-x86_64 → [wpsenhancer, windows, x86_64]
+        if platform not in parts:
             continue
-        if arch is not None and arch not in name:
+        if arch is not None and arch not in parts:
             continue
         return asset
     return None
@@ -136,11 +141,20 @@ def _current_platform() -> str:
 
 
 def _current_arch() -> str:
-    """返回当前机器架构标签（arm64 / x86_64）。"""
-    import platform
+    """返回当前机器架构标签（arm64 / x86_64 / x86）。
+
+    Windows 上 platform.machine() 来自 PROCESSOR_ARCHITEW6432 /
+    PROCESSOR_ARCHITECTURE（AMD64/ARM64/x86 等）；x86 与 x86_64 必须区分，
+    不能把非 arm 一律当作 x86_64（32 位 Windows 会下载错包）。
+    """
     machine = platform.machine().lower()
     if machine in ("aarch64", "arm64"):
         return "arm64"
+    if machine in ("amd64", "x86_64"):
+        return "x86_64"
+    if machine in ("x86", "i386", "i686", "ia32"):
+        return "x86"
+    # 未知架构按 64 位主流处理，避免下载不到包
     return "x86_64"
 
 
