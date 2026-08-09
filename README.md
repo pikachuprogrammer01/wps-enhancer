@@ -87,12 +87,12 @@ app 默认更新源为 **Gitee 镜像**（`https://gitee.com/pikachuprogrammer01
 
 **GitHub × Gitee 联动原理**：你只提交 GitHub，CI 发布时自动生成最新 `update.json` 并推回 main；Gitee 仓库通过官方镜像同步代码后，`update.json` 即生效——app 从 Gitee 检查更新（快），zip 默认从 GitHub release 下载（`urls` 指向 GitHub 直链）。
 
-**Gitee 镜像配置（一次性，网页操作）**：
+**Gitee 仓库准备（一次性）**：
 
 1. Gitee 新建仓库 → 选择「从 GitHub 导入」（Gitee 设置 → 账号绑定中先绑定 GitHub）→ 导入 `wps-enhancer`
-2. 仓库 → 「管理」 → 「镜像仓库」 → 添加 GitHub 源：`https://github.com/pikachuprogrammer01/wps-enhancer.git`（分支 `main`）→ 保存；同步频率选「每天」（作为兜底，正常走 CI 自动同步）
+2. **删除镜像配置**：仓库 → 「管理」 → 「镜像仓库」 → 删除 GitHub 镜像源——Gitee 镜像仓库是**单向同步且禁止 push**（CI 自动推送会被拒绝），删除后变普通仓库，由 CI 全自动接管同步
 
-**全自动同步（推荐，秒级）**：仓库已内置 workflow（`.github/workflows/sync-gitee.yml`），**每次 push main 自动推送到 Gitee**，无需手动点同步。启用只需一次性配置 token：
+**全自动同步（秒级）**：仓库已内置 workflow（`.github/workflows/sync-gitee.yml`），**每次 push main 自动推送到 Gitee**，无需手动点同步。启用只需一次性配置 token：
 
 1. **Gitee 生成私人令牌**：Gitee 头像 → 设置 → 安全设置 → 私人令牌 → 生成新令牌 → **权限只勾选 `projects`（仓库），其余全部不勾**（推送代码唯一必需权限；user/groups/issues/hooks 等一律不需要）→ 有效期建议 90 天或永久 → 复制
 2. **GitHub 添加 Secret**：仓库 Settings → Secrets and variables → Actions → New repository secret → 名称填 `GITEE_TOKEN`，值粘贴令牌
